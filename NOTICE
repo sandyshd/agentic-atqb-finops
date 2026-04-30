@@ -1,0 +1,56 @@
+Agentic FinOps
+Copyright 2026 Sandip Patel
+
+This product includes software developed by Sandip Patel.
+
+────────────────────────────────────────────────────────────────────────────
+Original Authorship of Novel Algorithms and Architecture
+────────────────────────────────────────────────────────────────────────────
+
+The following algorithms, control loops, metrics, and architectural designs
+contained in this repository were originally conceived, designed, and
+authored by Sandip Patel:
+
+  1. ATQB — Autonomous Token-Quota Balancing
+     A PID-inspired control-loop algorithm for governing LLM token quotas
+     and Hard-Limit Budgets (HLB) across heterogeneous workloads, including
+     the decision ladder (allow / quota_shift / throttle / downgrade /
+     hard_stop) and the Marginal Utility of Accuracy (MUA) model-tier
+     downgrade evidence using Beta-posterior success probabilities.
+     Implemented in: src/agentic_finops/atqb/
+
+  2. UCI — Unit Cost of Inference
+     A composite per-task fiscal metric combining weighted token cost,
+     compute overhead, and SLO-latency penalty, normalized over successful
+     tasks. Implemented in: src/agentic_finops/uci/
+
+  3. MAG — Multi-Agent Governance Orchestration
+     The agent topology (Sentinel, Balancer, Broker, Optimizer, Guardrail)
+     and the inter-agent message contracts for closed-loop FinOps decisions
+     across multi-cloud LLM inference workloads.
+     Implemented in: src/agentic_finops/mag/
+
+  4. Agentic FinOps Reference Architecture
+     The end-to-end architecture connecting cost-signal adapters, the ATQB
+     control loop, the MAG agent mesh, the UCI metric pipeline, the policy
+     guardrails, and the live dashboard.
+
+These contributions are described in the author's research paper
+"Agentic FinOps: Autonomous Token-Quota Balancing and Unit-Cost Inference
+Governance for Multi-Agent LLM Workloads" (Sandip Patel, 2026).
+
+All rights not expressly granted under the Apache License 2.0 are reserved.
+Patent rights to the algorithms described above are reserved by the author.
+
+────────────────────────────────────────────────────────────────────────────
+Attribution
+────────────────────────────────────────────────────────────────────────────
+
+If you use this software or its algorithms in academic work, please cite:
+
+    Patel, S. (2026). Agentic FinOps: Autonomous Token-Quota Balancing and
+    Unit-Cost Inference Governance for Multi-Agent LLM Workloads.
+
+If you use this software in a product or service, attribution to the
+original author is appreciated but not required beyond what is specified
+in the Apache License 2.0.

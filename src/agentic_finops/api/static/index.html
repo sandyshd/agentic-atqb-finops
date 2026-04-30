@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agentic FinOps — UCI · ATQB · MAG Console</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Agentic FinOps — Realtime Governance Console</h1>
+    <p>Ingest → Detect → Decide → Guardrail → Action Trace &nbsp;|&nbsp; UCI · ATQB · MAG</p>
+    <div class="badges">
+      <span class="badge badge-uci">UCI: Unit Cost of Inference</span>
+      <span class="badge badge-atqb">ATQB: Autonomous Token-Quota Balancing</span>
+      <span class="badge badge-mag">MAG: Multi-Agent Governance</span>
+      <a href="/pro" style="font-size:.72rem;font-weight:700;padding:3px 12px;border-radius:20px;border:1.5px solid #0078d4;background:#eff6fc;color:#0078d4;text-decoration:none">✦ New Dashboard →</a>
+    </div>
+  </header>
+
+  <!-- ── Row 1: FinOps KPIs ────────────────────────────────────────────── -->
+  <div class="section-label">FinOps Cost Signal Pipeline</div>
+  <div class="kpi-row-5">
+    <div class="card"><div class="card-label">Events Ingested</div><div id="event_count" class="kpi">0</div></div>
+    <div class="card"><div class="card-label">Actions Generated</div><div id="action_count" class="kpi">0</div></div>
+    <div class="card"><div class="card-label">Auto Applied</div><div id="auto_applied_count" class="kpi">0</div></div>
+    <div class="card"><div class="card-label">Est. Monthly Savings</div><div id="estimated_monthly_savings_usd" class="kpi">$0</div></div>
+    <div class="card"><div class="card-label">Tokens Used</div><div id="top_tokens_used_total" class="kpi">0</div></div>
+  </div>
+
+  <!-- ── Row 2: UCI KPIs ───────────────────────────────────────────────── -->
+  <div class="section-label">
+    UCI — Unit Cost of Inference
+    <span style="font-weight:400;opacity:.8">&nbsp; UCI = (C_tokens + C_compute + C_latency_penalty) / N_successful_tasks</span>
+  </div>
+  <div class="kpi-row">
+    <div class="card"><div class="card-label">Latest UCI ($/task)</div><div id="uci_val" class="kpi" style="color:var(--purple)">—</div></div>
+    <div class="card"><div class="card-label">C_tokens ($)</div><div id="c_tokens" class="kpi-sm">—</div></div>
+    <div class="card"><div class="card-label">C_latency_penalty ($)</div><div id="c_lat" class="kpi-sm" style="color:var(--danger)">—</div></div>
+    <div class="card"><div class="card-label">N_successful_tasks</div><div id="n_succ" class="kpi-sm" style="color:var(--accent)">—</div></div>
+  </div>
+
+  <!-- ── Row 3: Live deployment governance cards ──────────────────────── -->
+  <div class="section-label">ATQB — Live Deployment Governance (Azure Monitor + MAG)</div>
+  <div id="ledger_cards" class="kpi-row-6"></div>
+
+  <!-- ── Azure OpenAI real token consumption (Azure Monitor) ──────────── -->
+  <div class="section-label">Azure OpenAI — Real Token Consumption (Azure Monitor, last 24h)</div>
+  <div class="kpi-row">
+    <div class="card"><div class="card-label">Total Tokens Used</div><div id="aoai_total_tokens" class="kpi">—</div></div>
+    <div class="card"><div class="card-label">Prompt Tokens</div><div id="aoai_prompt_tokens" class="kpi">—</div></div>
+    <div class="card"><div class="card-label">Completion Tokens</div><div id="aoai_completion_tokens" class="kpi">—</div></div>
+    <div class="card"><div class="card-label">Active Resources</div><div id="aoai_resource_count" class="kpi">—</div></div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <div style="font-weight:700;margin-bottom:8px">Per-Resource Token Consumption (Azure Monitor)</div>
+    <table>
+      <thead><tr><th>Resource</th><th>Kind</th><th>Resource Group</th><th>Prompt Tokens</th><th>Completion Tokens</th><th>Total</th></tr></thead>
+      <tbody id="aoai_tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- ── Live deployment breakdown ─────────────────────────────────────── -->
+  <div class="section-label">ATQB — Per-Agent / Per-Deployment Breakdown</div>
+  <div style="margin:-4px 0 10px;font-size:.8rem;opacity:.72">
+    Azure Monitor exposes usage by resource and deployment. The table below uses that live telemetry and the MAG pipeline maps each deployment into a workload ID for UCI and ATQB decisions.
+  </div>
+  <div class="kpi-row">
+    <div class="card"><div class="card-label">Active Deployments</div><div id="deployments_total" class="kpi">—</div></div>
+    <div class="card"><div class="card-label">Total Requests</div><div id="deployment_requests_total" class="kpi">—</div></div>
+    <div class="card"><div class="card-label">Deployment Tokens</div><div id="tokens_used_total" class="kpi">—</div></div>
+    <div class="card"><div class="card-label">Average Latency</div><div id="token_utilization_total" class="kpi">—</div></div>
+  </div>
+
+  <!-- ── Token trend chart ─────────────────────────────────────────────── -->
+  <div class="card" style="margin-top:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-weight:700">Per-Deployment Token Trend — Last 24h (hourly)</div>
+      <div style="display:flex;gap:6px">
+        <button id="btn_metric_tokens"   class="chart-btn active" onclick="setChartMetric('total_tokens')">Tokens</button>
+        <button id="btn_metric_requests" class="chart-btn"        onclick="setChartMetric('request_count')">Requests</button>
+        <button id="btn_metric_latency"  class="chart-btn"        onclick="setChartMetric('avg_latency_ms')">Latency (ms)</button>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="token_trend_chart"></canvas></div>
+    <div id="chart_status" style="font-size:.76rem;opacity:.6;margin-top:6px;text-align:center"></div>
+  </div>
+
+  <div class="card" style="margin-top:10px">
+    <div style="font-weight:700;margin-bottom:8px">Per-Agent / Per-Deployment Token Consumption</div>
+    <table>
+      <thead><tr><th>Agent / Resource</th><th>Deployment</th><th>Model</th><th>Requests</th><th>Prompt</th><th>Completion</th><th>Total</th><th>Avg Latency</th><th>ATQB</th></tr></thead>
+      <tbody id="token_tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- ── Analytics KPIs: pie chart, burn rate, cost trajectory ────────── -->
+  <div class="section-label">Analytics — Model Distribution · Token Burn Rate · Cost Trajectory</div>
+  <div class="analytics-row">
+    <div class="card">
+      <div class="card-label">Model Distribution</div>
+      <div class="pie-wrap"><canvas id="model_dist_chart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Token Burn Rate</div>
+      <div id="burn_rate_value" class="kpi" style="color:var(--warn)">—</div>
+      <div id="burn_rate_detail" style="font-size:.78rem;opacity:.65;margin-top:6px">tokens / min</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Cost Trajectory (est. $/hr)</div>
+      <div id="cost_traj_value" class="kpi" style="color:var(--purple)">—</div>
+      <div id="cost_traj_detail" style="font-size:.78rem;opacity:.65;margin-top:6px">based on UCI × request volume</div>
+    </div>
+  </div>
+
+  <!-- ── Broker spot market ────────────────────────────────────────────── -->
+  <div class="section-label">Broker Agent — GPU Spot Market (UCI by provider)</div>
+  <div id="spot_market" class="spot-grid"></div>
+
+  <!-- ── ATQB live rebalancing / rate-limit pressure ──────────────────── -->
+  <div class="section-label">ATQB — Live Quota Transfers and Rate-Limit Pressure</div>
+  <div class="kpi-row" style="margin-bottom:10px">
+    <div class="card"><div class="card-label">Transfers (1h)</div><div id="transfer_count" class="kpi">—</div></div>
+    <div class="card"><div class="card-label">Tokens Shifted (1h)</div><div id="transfer_tokens" class="kpi">—</div></div>
+    <div class="card"><div class="card-label">Workloads Under Pressure</div><div id="pressure_workloads" class="kpi">—</div></div>
+    <div class="card"><div class="card-label">Max RL Pressure</div><div id="max_rate_pressure" class="kpi">—</div></div>
+  </div>
+  <div class="tables">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:8px">Recent Quota Transfers</div>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Tokens</th><th>Reason</th></tr></thead>
+        <tbody id="transfer_tbody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:8px">Rate-Limit Pressure by Workload</div>
+      <table>
+        <thead><tr><th>Workload</th><th>Provider</th><th>429s</th><th>Retry p95</th><th>Pressure</th></tr></thead>
+        <tbody id="ratelimit_tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Decision trace tables ─────────────────────────────────────────── -->
+  <div class="section-label">Agent Decision Trace</div>
+  <div class="tables">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:8px">FinOps Recent Actions</div>
+      <table>
+        <thead><tr><th>State</th><th>Cloud</th><th>Action</th><th>Savings</th><th>Trace</th></tr></thead>
+        <tbody id="actions_tbody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:8px">ATQB Governor Decisions</div>
+      <table>
+        <thead><tr><th>Action</th><th>Workload</th><th>TPW</th><th>Budget%</th><th>Reason</th></tr></thead>
+        <tbody id="atqb_tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── UCI history + signals ─────────────────────────────────────────── -->
+  <div class="tables" style="margin-top:10px">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:8px">UCI History (latest per workload)</div>
+      <table>
+        <thead><tr><th>Workload</th><th>UCI</th><th>C_tokens</th><th>C_compute</th><th>C_latency</th><th>N_succ</th><th>Trend</th></tr></thead>
+        <tbody id="uci_tbody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:8px">Recent Cost Signals</div>
+      <table>
+        <thead><tr><th>Cloud</th><th>Resource</th><th>Util%</th><th>Anomaly</th><th>$/hr</th></tr></thead>
+        <tbody id="events_tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── MAG Agent Status ───────────────────────────────────────────────── -->
+  <div class="section-label">MAG — Multi-Agent Governance Status</div>
+  <div id="mag_strip" class="kpi-row"></div>
+
+  <!-- ── Live Sequence Timeline ─────────────────────────────────────────── -->
+  <div class="section-label">Live Sequence Timeline</div>
+  <div class="card timeline-panel">
+    <div class="timeline-header">
+      <div>
+        <div style="font-weight:700">Latest End-to-End Request Trace</div>
+        <div class="timeline-meta" id="timeline_meta">Waiting for sequence traces...</div>
+      </div>
+      <div class="timeline-meta">Source: <span style="font-weight:700">/api/mag/sequence-traces</span></div>
+    </div>
+    <div class="trace-layout">
+      <div class="trace-history">
+        <div class="trace-history-title">Trace History</div>
+        <div id="trace_history" class="trace-history-list"></div>
+      </div>
+      <div id="sequence_timeline" class="timeline"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let selectedTraceId = null;
+  let tokenTrendChart = null;
+  let chartMetric = 'total_tokens';
+  let lastTokenHistory = null;
+  let modelDistChart = null;
+  const expandedPayloadKeys = new Set();
+
+  const CHART_COLORS = [
+    '#1a5fa8', '#d9760e', '#15603e', '#5b3fa0',
+    '#bf3320', '#0f6b70', '#8f6500', '#7a3500',
+  ];
+
+  const CHART_METRIC_LABEL = {
+    total_tokens:   'Tokens',
+    request_count:  'Requests',
+    avg_latency_ms: 'Avg Latency (ms)',
+  };
+
+  function setChartMetric(metric) {
+    chartMetric = metric;
+    document.querySelectorAll('.chart-btn').forEach(btn => btn.classList.remove('active'));
+    const ids = { total_tokens: 'btn_metric_tokens', request_count: 'btn_metric_requests', avg_latency_ms: 'btn_metric_latency' };
+    const btn = document.getElementById(ids[metric]);
+    if (btn) btn.classList.add('active');
+    if (lastTokenHistory) renderTokenTrendChart(lastTokenHistory);
+  }
+
+  function renderTokenTrendChart(data) {
+    const statusEl = document.getElementById('chart_status');
+    if (!data || !data.labels || !data.labels.length) {
+      if (statusEl) statusEl.textContent = 'No hourly data available yet — waiting for Azure Monitor cache refresh.';
+      return;
+    }
+    if (statusEl) statusEl.textContent = `${data.labels.length} hourly buckets across ${data.series.length} deployment(s). Last point: ${data.labels[data.labels.length-1]}`;
+
+    const labels = data.labels.map(ts => {
+      const d = new Date(ts);
+      const mon = d.toLocaleString('en-US', { month: 'short', day: '2-digit', timeZone: 'UTC' });
+      const hh  = String(d.getUTCHours()).padStart(2, '0');
+      const mm  = String(d.getUTCMinutes()).padStart(2, '0');
+      return `${mon} ${hh}:${mm} UTC`;
+    });
+
+    const datasets = data.series.map((s, i) => {
+      const color = CHART_COLORS[i % CHART_COLORS.length];
+      return {
+        label: `${s.deployment_name} / ${s.resource_name}`,
+        data: s[chartMetric],
+        borderColor: color,
+        backgroundColor: color + '22',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2,
+      };
+    });
+
+    const ctx = document.getElementById('token_trend_chart');
+    if (!ctx) return;
+
+    if (tokenTrendChart) {
+      tokenTrendChart.data.labels = labels;
+      tokenTrendChart.data.datasets = datasets;
+      tokenTrendChart.options.scales.y.title.text = CHART_METRIC_LABEL[chartMetric];
+      tokenTrendChart.update('none');
+    } else {
+      tokenTrendChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12, padding: 12 } },
+            tooltip: {
+              callbacks: {
+                label: ctx => `${ctx.dataset.label}: ${Number(ctx.parsed.y).toLocaleString()}`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 },
+              grid: { color: '#ede5d4' },
+            },
+            y: {
+              beginAtZero: true,
+              ticks: { font: { size: 10 } },
+              grid: { color: '#ede5d4' },
+              title: { display: true, text: CHART_METRIC_LABEL[chartMetric], font: { size: 11 }, color: '#4a5560' },
+            },
+          },
+        },
+      });
+    }
+  }
+
+  function renderModelDistChart(magResults) {
+    const counts = {};
+    for (const r of magResults) {
+      const model = r.model_name || 'unknown';
+      counts[model] = (counts[model] || 0) + (r.request_count || 1);
+    }
+    const labels = Object.keys(counts);
+    const data = Object.values(counts);
+    if (!labels.length) return;
+
+    const ctx = document.getElementById('model_dist_chart');
+    if (!ctx) return;
+
+    if (modelDistChart) {
+      modelDistChart.data.labels = labels;
+      modelDistChart.data.datasets[0].data = data;
+      modelDistChart.update('none');
+    } else {
+      modelDistChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: CHART_COLORS.slice(0, labels.length),
+            borderWidth: 1,
+            borderColor: '#fdf8ef',
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, padding: 8 } },
+          },
+        },
+      });
+    }
+  }
+
+  function renderBurnRate(magResults) {
+    if (!magResults.length) return;
+    const sorted = [...magResults].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const totalTokens = sorted.reduce((s, r) => s + Number(r.c_tokens || 0) * 1000, 0);
+    const spanMs = Date.parse(last.timestamp || '') - Date.parse(first.timestamp || '');
+    const spanMin = Math.max(1, spanMs / 60000);
+    const ratePerMin = totalTokens / spanMin;
+
+    document.getElementById('burn_rate_value').textContent = formatInt(Math.round(ratePerMin));
+    document.getElementById('burn_rate_detail').textContent =
+      `${formatInt(Math.round(totalTokens))} tokens over ${spanMin.toFixed(1)} min`;
+  }
+
+  function renderCostTrajectory(magResults) {
+    if (!magResults.length) return;
+    const sorted = [...magResults].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const totalCost = sorted.reduce((s, r) => s + Number(r.uci || 0) * Number(r.request_count || 1), 0);
+    const spanMs = Date.parse(last.timestamp || '') - Date.parse(first.timestamp || '');
+    const spanHr = Math.max(0.001, spanMs / 3600000);
+    const costPerHr = totalCost / spanHr;
+
+    document.getElementById('cost_traj_value').textContent = `$${costPerHr.toFixed(4)}`;
+    document.getElementById('cost_traj_detail').textContent =
+      `$${totalCost.toFixed(4)} total over ${spanHr.toFixed(2)} hr`;
+  }
+
+  function barClass(pct) {
+    if (pct >= 90) return 'bar-danger';
+    if (pct >= 70) return 'bar-warn';
+    return 'bar-ok';
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function formatPayload(payload) {
+    if (!payload) return 'No payload';
+    return JSON.stringify(payload, null, 2);
+  }
+
+  function formatInt(value) {
+    return Number(value || 0).toLocaleString();
+  }
+
+  function laneClass(step) {
+    const lane = (step.to === 'Workload' ? step.from : step.to).toLowerCase();
+    return `lane-${lane}`;
+  }
+
+  function laneName(step) {
+    return step.to === 'Workload' ? step.from : step.to;
+  }
+
+  function renderTraceHistory(traces) {
+    const el = document.getElementById('trace_history');
+    el.innerHTML = traces.map(trace => `
+      <div class="trace-history-item ${trace.request_id === selectedTraceId ? 'selected' : ''}" data-trace-id="${escapeHtml(trace.request_id)}">
+        <div class="trace-history-head">
+          <div class="trace-history-id">${escapeHtml(trace.request_id.slice(0, 18))}</div>
+          <div class="trace-history-intent">${escapeHtml(trace.intent)}</div>
+        </div>
+        <div class="trace-history-meta">
+          workload=${escapeHtml(trace.workload_id)}<br />
+          steps=${trace.sequence_trace.length}<br />
+          ${escapeHtml(trace.timestamp)}
+        </div>
+      </div>`).join('');
+  }
+
+  function renderTimeline(trace) {
+    const timelineMeta = document.getElementById('timeline_meta');
+    const timelineEl = document.getElementById('sequence_timeline');
+    if (!trace) {
+      timelineMeta.textContent = 'Waiting for sequence traces...';
+      timelineEl.innerHTML = '<div class="timeline-empty">No trace available yet.</div>';
+      return;
+    }
+
+    timelineMeta.textContent = `Request ${trace.request_id} | workload=${trace.workload_id} | intent=${trace.intent} | ${trace.timestamp}`;
+    timelineEl.innerHTML = trace.sequence_trace.map(step => {
+      const payloadKey = `${trace.request_id}:${step.step}`;
+      const openAttr = expandedPayloadKeys.has(payloadKey) ? ' open' : '';
+      return `
+      <div class="timeline-step">
+        <div class="timeline-index">${step.step}</div>
+        <div class="timeline-body ${laneClass(step)}">
+          <div class="timeline-lane-row">
+            <div class="lane-chip ${laneClass(step)}">${escapeHtml(laneName(step))}</div>
+            <div class="timeline-lane">${escapeHtml(step.from)} -> ${escapeHtml(step.to)}</div>
+          </div>
+          <div class="timeline-title">${escapeHtml(step.box)}</div>
+          <div class="timeline-arrow">${escapeHtml(step.arrow)}</div>
+          <div class="timeline-detail">${escapeHtml(step.detail)}</div>
+          <div class="payload-wrap">
+            <details class="payload-details" data-payload-key="${escapeHtml(payloadKey)}"${openAttr}>
+              <summary class="payload-summary">Payload</summary>
+              <pre class="timeline-payload">${escapeHtml(formatPayload(step.payload))}</pre>
+            </details>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function refresh() {
+    const [mRes, aRes, eRes, uciRes, atqbRes, ledRes, transfersRes, rlRes, magRes, brokerQuotesRes, magResultsRes, seqRes, aoaiRes, aoaiDepRes, tokenHistRes] = await Promise.all([
+      fetch('/api/metrics'),
+      fetch('/api/actions?limit=10'),
+      fetch('/api/events?limit=10'),
+      fetch('/api/uci?limit=20'),
+      fetch('/api/atqb/decisions?limit=12'),
+      fetch('/api/atqb/ledgers'),
+      fetch('/api/atqb/transfers?limit=20'),
+      fetch('/api/atqb/rate-limits'),
+      fetch('/api/mag/status'),
+      fetch('/api/broker/quotes'),
+      fetch('/api/mag/results?limit=50'),
+      fetch('/api/mag/sequence-traces?limit=12'),
+      fetch('/api/openai/usage'),
+      fetch('/api/openai/deployments'),
+      fetch('/api/openai/token-history'),
+    ]);
+    const metrics      = await mRes.json();
+    const actions      = await aRes.json();
+    const events       = await eRes.json();
+    const uciData      = await uciRes.json();
+    const atqbData     = await atqbRes.json();
+    const ledgers      = await ledRes.json();
+    const transfers    = await transfersRes.json();
+    const rateLimits   = await rlRes.json();
+    const magStatus    = await magRes.json();
+    const brokerQuotes = await brokerQuotesRes.json();
+    const latestMAG    = await magResultsRes.json();
+    const traces       = await seqRes.json();
+    const aoaiUsage    = await aoaiRes.json();
+    const deployments  = await aoaiDepRes.json();
+    const tokenHistory = await tokenHistRes.json();
+
+    // ── FinOps KPIs ──
+    for (const [k, v] of Object.entries(metrics)) {
+      const el = document.getElementById(k);
+      if (el) el.textContent = k.includes('savings') ? `$${v}` : v;
+    }
+
+    // ── UCI KPIs ──
+    if (latestMAG.length > 0) {
+      const r = latestMAG[0];
+      document.getElementById('uci_val').textContent  = `$${Number(r.uci).toFixed(5)}`;
+      document.getElementById('c_tokens').textContent = `$${Number(r.c_tokens||0).toFixed(5)}`;
+      document.getElementById('c_lat').textContent    = `$${Number(r.c_latency_penalty||0).toFixed(5)}`;
+      document.getElementById('n_succ').textContent   = r.n_successful_tasks ?? '—';
+    }
+
+    // ── Azure OpenAI real token consumption (Azure Monitor) ──
+    const aoaiTotalTokens      = aoaiUsage.reduce((s, r) => s + (r.total_tokens || 0), 0);
+    const aoaiPromptTokens     = aoaiUsage.reduce((s, r) => s + (r.prompt_tokens || 0), 0);
+    const aoaiCompletionTokens = aoaiUsage.reduce((s, r) => s + (r.completion_tokens || 0), 0);
+    const magByWorkload = Object.fromEntries(latestMAG.map(r => [r.workload_id, r]));
+    document.getElementById('aoai_total_tokens').textContent      = aoaiUsage.length ? formatInt(aoaiTotalTokens) : '—';
+    document.getElementById('aoai_prompt_tokens').textContent     = aoaiUsage.length ? formatInt(aoaiPromptTokens) : '—';
+    document.getElementById('aoai_completion_tokens').textContent = aoaiUsage.length ? formatInt(aoaiCompletionTokens) : '—';
+    document.getElementById('aoai_resource_count').textContent    = aoaiUsage.length || '—';
+    document.getElementById('aoai_tbody').innerHTML = aoaiUsage.length
+      ? aoaiUsage.map(r => `
+          <tr>
+            <td>${r.resource_name}</td>
+            <td>${r.kind}</td>
+            <td>${r.resource_group}</td>
+            <td>${formatInt(r.prompt_tokens)}</td>
+            <td>${formatInt(r.completion_tokens)}</td>
+            <td><strong>${formatInt(r.total_tokens)}</strong></td>
+          </tr>`).join('')
+      : '<tr><td colspan="6">Loading Azure Monitor data… (refreshes every 5 min)</td></tr>';
+
+    // Update top KPI Tokens Used with real Azure Monitor data when available
+    document.getElementById('top_tokens_used_total').textContent =
+      aoaiUsage.length ? formatInt(aoaiTotalTokens) : '—';
+
+    // ── Live deployment governance cards ──
+    document.getElementById('ledger_cards').innerHTML = deployments.length ? deployments.map(d => {
+      const magRow = magByWorkload[d.workload_id];
+      const action = magRow ? magRow.atqb_action : 'pending';
+      const uci = magRow ? `$${Number(magRow.uci || 0).toFixed(5)}` : '—';
+      const latencyPct = Math.min(100, (Number(d.avg_latency_ms || 0) / 2000) * 100);
+      const tokenPct = aoaiTotalTokens > 0 ? Math.min(100, (Number(d.total_tokens || 0) / aoaiTotalTokens) * 100) : 0;
+      return `
+      <div class="card">
+        <div class="card-label">${d.deployment_name}</div>
+        <div class="kpi-sm">${action} | UCI ${uci}</div>
+        <div class="bar-wrap">
+          <div style="font-size:.7rem;opacity:.6">${formatInt(d.request_count)} requests | ${d.resource_name}</div>
+          <div class="bar-track"><div class="bar-fill ${barClass(tokenPct)}" style="width:${tokenPct}%"></div></div>
+        </div>
+        <div style="margin-top:4px;font-size:.7rem;opacity:.6">Latency ${Number(d.avg_latency_ms || 0).toFixed(0)}ms</div>
+        <div class="bar-track"><div class="bar-fill ${barClass(latencyPct)}" style="width:${latencyPct}%"></div></div>
+      </div>`;
+    }).join('') : '<div class="card"><div class="card-label">No live deployments</div><div class="kpi-sm">Azure Monitor has not returned deployment data yet.</div></div>';
+
+    // ── Live deployment summary + table ──
+    const deploymentRequestsTotal = deployments.reduce((sum, d) => sum + Number(d.request_count || 0), 0);
+    const deploymentLatencyValues = deployments.filter(d => Number(d.avg_latency_ms || 0) > 0).map(d => Number(d.avg_latency_ms));
+    const deploymentAvgLatency = deploymentLatencyValues.length
+      ? deploymentLatencyValues.reduce((sum, value) => sum + value, 0) / deploymentLatencyValues.length
+      : 0;
+    document.getElementById('deployments_total').textContent = deployments.length ? formatInt(deployments.length) : '—';
+    document.getElementById('deployment_requests_total').textContent = deployments.length ? formatInt(deploymentRequestsTotal) : '—';
+    document.getElementById('tokens_used_total').textContent = deployments.length ? formatInt(aoaiTotalTokens) : '—';
+    document.getElementById('token_utilization_total').textContent = deployments.length ? `${deploymentAvgLatency.toFixed(0)} ms` : '—';
+    document.getElementById('token_tbody').innerHTML = deployments.length ? deployments.map(d => {
+      const magRow = magByWorkload[d.workload_id];
+      const atqb = magRow ? magRow.atqb_action : 'pending';
+      return `
+      <tr>
+        <td>${d.resource_name}</td>
+        <td>${d.deployment_name}</td>
+        <td>${d.model_name}</td>
+        <td>${formatInt(d.request_count)}</td>
+        <td>${formatInt(d.prompt_tokens)}</td>
+        <td>${formatInt(d.completion_tokens)}</td>
+        <td>${formatInt(d.total_tokens)}</td>
+        <td>${Number(d.avg_latency_ms || 0).toFixed(0)} ms</td>
+        <td>${atqb}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="9">No live deployment telemetry is available yet.</td></tr>';
+
+    // ── Token trend chart ──
+    lastTokenHistory = tokenHistory;
+    renderTokenTrendChart(tokenHistory);
+
+    // ── Analytics KPIs ──
+    renderModelDistChart(latestMAG);
+    renderBurnRate(latestMAG);
+    renderCostTrajectory(latestMAG);
+
+    // ── Spot market ──
+    const quoteByProvider = Object.fromEntries((brokerQuotes || []).map(q => [q.provider, q]));
+    const prov = magStatus.provider_uci || {};
+    document.getElementById('spot_market').innerHTML = Object.entries(prov).map(([p,v]) => {
+      const q = quoteByProvider[p] || {};
+      const freshness = q.is_fresh ? 'fresh' : 'stale';
+      const age = q.age_seconds == null ? 'n/a' : `${Number(q.age_seconds).toFixed(0)}s`;
+      const source = q.source || 'baseline';
+      const isLive = source && !source.includes('bootstrap') && source !== 'baseline' ? 'live' : 'fallback';
+      const badgeLabel = isLive === 'live' ? 'LIVE' : 'FALLBACK';
+      const mult = q.spot_multiplier == null ? '—' : Number(q.spot_multiplier).toFixed(3);
+      return `<div class="spot-card">
+        <div class="provider">${p}<span class="provider-badge ${isLive}">${badgeLabel}</span></div>
+        UCI $${Number(v).toFixed(5)}<br />
+        spot x${mult} | ${freshness} (${age})<br />
+        <span style="opacity:.7">${source}</span>
+      </div>`;
+    }).join('');
+
+    // ── ATQB transfers + rate-limit panel ──
+    const hourAgo = Date.now() - (60 * 60 * 1000);
+    const recentTransfers = (transfers || []).filter(t => {
+      const ts = Date.parse(t.timestamp || '');
+      return Number.isFinite(ts) && ts >= hourAgo;
+    });
+    const shiftedTokens = recentTransfers.reduce((s, t) => s + Number(t.tokens || 0), 0);
+    const pressured = (rateLimits || []).filter(r => Number(r.pressure || 0) >= 0.4);
+    const maxPressure = (rateLimits || []).reduce((mx, r) => Math.max(mx, Number(r.pressure || 0)), 0);
+
+    document.getElementById('transfer_count').textContent = formatInt(recentTransfers.length);
+    document.getElementById('transfer_tokens').textContent = formatInt(shiftedTokens);
+    document.getElementById('pressure_workloads').textContent = formatInt(pressured.length);
+    document.getElementById('max_rate_pressure').textContent = maxPressure > 0 ? maxPressure.toFixed(2) : '0.00';
+
+    document.getElementById('transfer_tbody').innerHTML = (transfers || []).length
+      ? (transfers || []).slice(0, 12).map(t => `
+        <tr>
+          <td>${(t.from_workload_id || '').replace('workload-','')}</td>
+          <td>${(t.to_workload_id || '').replace('workload-','')}</td>
+          <td>${formatInt(t.tokens)}</td>
+          <td title="${escapeHtml(t.reason || '')}">${escapeHtml((t.reason || '').slice(0, 52))}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4">No quota transfers yet.</td></tr>';
+
+    document.getElementById('ratelimit_tbody').innerHTML = (rateLimits || []).length
+      ? (rateLimits || []).sort((a, b) => Number(b.pressure || 0) - Number(a.pressure || 0)).map(r => {
+        const pct = Math.round(Number(r.pressure || 0) * 100);
+        return `
+        <tr>
+          <td>${(r.workload_id || '').replace('workload-','')}</td>
+          <td>${r.provider || '—'}</td>
+          <td>${formatInt(r.http_429_count || 0)}</td>
+          <td>${Number(r.retry_after_ms_p95 || 0).toFixed(0)} ms</td>
+          <td>
+            ${Number(r.pressure || 0).toFixed(2)}
+            <div class="bar-track" style="margin-top:3px"><div class="bar-fill ${barClass(pct)}" style="width:${pct}%"></div></div>
+          </td>
+        </tr>`;
+      }).join('')
+      : '<tr><td colspan="5">No recent rate-limit telemetry.</td></tr>';
+
+    // ── FinOps Actions table ──
+    document.getElementById('actions_tbody').innerHTML = actions.map(a => `
+      <tr>
+        <td class="s-${a.state}">${a.state}</td>
+        <td>${a.recommendation.signal.cloud}</td>
+        <td>${a.recommendation.action_type}</td>
+        <td>$${a.recommendation.expected_monthly_savings_usd}</td>
+        <td title="${a.trace_id}">${a.trace_id.slice(6,18)}</td>
+      </tr>`).join('');
+
+    // ── ATQB Decisions table ──
+    document.getElementById('atqb_tbody').innerHTML = atqbData.map(d => `
+      <tr>
+        <td class="a-${d.action}">${d.action}</td>
+        <td>${d.workload_id.replace('workload-','')}</td>
+        <td>${Number(d.tpw).toFixed(2)}</td>
+        <td>${(d.budget_utilization*100).toFixed(1)}%</td>
+        <td title="${d.reason}">${d.reason.slice(0,45)}…</td>
+      </tr>`).join('');
+
+    // ── UCI history table (deduplicated latest per workload) ──
+    const seen = new Set();
+    const uciRows = uciData.filter(u => { if(seen.has(u.workload_id)) return false; seen.add(u.workload_id); return true; });
+    document.getElementById('uci_tbody').innerHTML = uciRows.map(u => {
+      const traj = (latestMAG.find(r => r.workload_id === u.workload_id) || {}).uci_trajectory || 'stable';
+      return `<tr>
+        <td>${u.workload_id.replace('workload-','')}</td>
+        <td><b>$${Number(u.uci).toFixed(5)}</b></td>
+        <td>$${Number(u.c_tokens).toFixed(4)}</td>
+        <td>$${Number(u.c_compute).toFixed(4)}</td>
+        <td>$${Number(u.c_latency_penalty).toFixed(4)}</td>
+        <td>${u.n_successful_tasks}</td>
+        <td class="t-${traj}">${traj}</td>
+      </tr>`;
+    }).join('');
+
+    // ── Recent Signals table ──
+    document.getElementById('events_tbody').innerHTML = events.map(e => `
+      <tr>
+        <td>${e.cloud}</td>
+        <td>${e.resource_name}</td>
+        <td>${e.utilization_pct}</td>
+        <td>${e.anomaly_score}</td>
+        <td>$${e.estimated_hourly_cost_usd}</td>
+      </tr>`).join('');
+
+    // ── MAG agent strip ──
+    const agents = magStatus.agents || [];
+    const counts = magStatus.atqb_action_counts || {};
+    document.getElementById('mag_strip').innerHTML =
+      agents.map(ag => `
+        <div class="card">
+          <div class="card-label">${ag} Agent</div>
+          <div style="font-size:.75rem;color:var(--accent);font-weight:700">● Active</div>
+        </div>`).join('') +
+      `<div class="card" style="grid-column:span 2">
+        <div class="card-label">ATQB Action Distribution</div>
+        <div style="font-size:.79rem;line-height:1.8">
+          ${Object.entries(counts).map(([k,v])=>`<span class="a-${k}">${k}</span>: <b>${v}</b>`).join('&nbsp;&nbsp;') || '—'}
+        </div>
+      </div>`;
+
+    // ── Live sequence timeline with replay history ──
+    if (traces.length && (!selectedTraceId || !traces.some(t => t.request_id === selectedTraceId))) {
+      selectedTraceId = traces[0].request_id;
+    }
+    renderTraceHistory(traces);
+    renderTimeline(traces.find(t => t.request_id === selectedTraceId) || traces[0] || null);
+  }
+
+  document.addEventListener('click', (event) => {
+    const item = event.target.closest('[data-trace-id]');
+    if (!item) return;
+    selectedTraceId = item.getAttribute('data-trace-id');
+    refresh();
+  });
+
+  document.addEventListener('toggle', (event) => {
+    const detailsEl = event.target;
+    if (!(detailsEl instanceof HTMLDetailsElement)) return;
+    if (!detailsEl.classList.contains('payload-details')) return;
+    const payloadKey = detailsEl.getAttribute('data-payload-key');
+    if (!payloadKey) return;
+    if (detailsEl.open) {
+      expandedPayloadKeys.add(payloadKey);
+    } else {
+      expandedPayloadKeys.delete(payloadKey);
+    }
+  }, true);
+
+  refresh();
+  setInterval(refresh, 2000);
+</script>
+</body>
+</html>

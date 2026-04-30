@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agentic FinOps — Governance Hub</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --nav-bg:     #1b2a3a;
+      --nav-hover:  #243b52;
+      --nav-active: #2c4f6f;
+      --nav-border: #0078d4;
+      --nav-text:   #c8d6e5;
+      --nav-w:      220px;
+      --top-h:      52px;
+      --bg:         #f3f2f1;
+      --panel:      #ffffff;
+      --ink:        #201f1e;
+      --ink2:       #605e5c;
+      --ink3:       #a19f9d;
+      --border:     #edebe9;
+      --blue:       #0078d4;
+      --blue-lt:    #eff6fc;
+      --green:      #107c10;
+      --green-lt:   #dff6dd;
+      --amber:      #c19c00;
+      --amber-lt:   #fff4ce;
+      --red:        #a4262c;
+      --red-lt:     #fde7e9;
+      --purple:     #8764b8;
+      --purple-lt:  #f4f0fb;
+      --shadow:     0 2px 8px rgba(0,0,0,.08);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      color: var(--ink);
+      background: var(--bg);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── SIDEBAR ─────────────────────────────────────────────────────── */
+    .nav {
+      width: var(--nav-w);
+      background: var(--nav-bg);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+      height: var(--top-h);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      flex-shrink: 0;
+    }
+    .nav-logo {
+      width: 30px;
+      height: 30px;
+      background: var(--blue);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .nav-logo svg { width: 16px; height: 16px; fill: #fff; }
+    .nav-brand-name  { color: #fff; font-size: .88rem; font-weight: 700; line-height: 1.2; }
+    .nav-brand-sub   { color: var(--nav-text); font-size: .67rem; margin-top: 1px; }
+    .nav-group-label {
+      padding: 14px 16px 4px;
+      color: rgba(200,214,229,.4);
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      color: var(--nav-text);
+      cursor: pointer;
+      font-size: .82rem;
+      border-left: 3px solid transparent;
+      transition: background .15s, color .15s;
+      user-select: none;
+    }
+    .nav-item:hover  { background: var(--nav-hover); color: #fff; }
+    .nav-item.active { background: var(--nav-active); color: #fff; border-left-color: var(--nav-border); font-weight: 600; }
+    .nav-item svg    { width: 15px; height: 15px; fill: currentColor; flex-shrink: 0; opacity: .75; }
+    .nav-item.active svg { opacity: 1; }
+    .nav-spacer      { flex: 1; }
+    .nav-divider     { border: none; border-top: 1px solid rgba(255,255,255,.07); margin: 6px 0; }
+
+    /* ── MAIN SHELL ──────────────────────────────────────────────────── */
+    .main  { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+
+    /* ── TOPBAR ──────────────────────────────────────────────────────── */
+    .topbar {
+      height: var(--top-h);
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 14px;
+      flex-shrink: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .topbar-title { font-size: .95rem; font-weight: 600; flex: 1; color: var(--ink); }
+    .refresh-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .74rem;
+      color: var(--ink2);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 10px;
+    }
+    .rdot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--green);
+      transition: background .3s;
+    }
+    .rdot.spinning { background: var(--amber); animation: blink .7s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+    .btn {
+      font-size: .76rem; font-weight: 600; padding: 5px 14px;
+      border-radius: 2px; border: 1px solid; cursor: pointer;
+      transition: background .15s, color .15s; text-decoration: none;
+      display: inline-flex; align-items: center;
+    }
+    .btn-primary  { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .btn-primary:hover { background: #106ebe; }
+    .btn-outline  { background: var(--panel); color: var(--blue); border-color: var(--blue); }
+    .btn-outline:hover { background: var(--blue-lt); }
+
+    /* ── CONTENT AREA ────────────────────────────────────────────────── */
+    .content { flex: 1; overflow-y: auto; padding: 24px; }
+    .section { display: none; }
+    .section.active { display: block; }
+    .section-hd { margin-bottom: 20px; }
+    .section-hd h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 3px; }
+    .section-hd p  { font-size: .79rem; color: var(--ink2); }
+
+    /* ── KPI TILES ───────────────────────────────────────────────────── */
+    .kpi-row   { display: grid; gap: 12px; margin-bottom: 20px; }
+    .kpi-5     { grid-template-columns: repeat(5,minmax(0,1fr)); }
+    .kpi-4     { grid-template-columns: repeat(4,minmax(0,1fr)); }
+    .kpi-3     { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .kpi-tile  {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 4px; padding: 16px 18px;
+      box-shadow: var(--shadow); position: relative; overflow: hidden;
+    }
+    .kpi-tile::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 3px; background: var(--tile-color, var(--blue));
+    }
+    .kpi-label { font-size: .73rem; color: var(--ink2); font-weight: 500; margin-bottom: 6px; }
+    .kpi-val   { font-size: 1.55rem; font-weight: 700; line-height: 1; margin-bottom: 5px; color: var(--tile-color, var(--blue)); }
+    .kpi-sub   { font-size: .7rem; color: var(--ink3); }
+    .t-blue    { --tile-color: var(--blue); }
+    .t-green   { --tile-color: var(--green); }
+    .t-amber   { --tile-color: var(--amber); }
+    .t-red     { --tile-color: var(--red); }
+    .t-purple  { --tile-color: var(--purple); }
+
+    /* ── CARDS ───────────────────────────────────────────────────────── */
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 4px; padding: 18px 20px;
+      box-shadow: var(--shadow); margin-bottom: 20px;
+    }
+    .card:last-child { margin-bottom: 0; }
+    .card-hd {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      font-size: .74rem; font-weight: 700; color: var(--ink2);
+      text-transform: uppercase; letter-spacing: .06em;
+    }
+
+    /* ── GRID HELPERS ────────────────────────────────────────────────── */
+    .g2     { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .g3     { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .g1-2   { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 20px; }
+
+    /* ── TABLES ──────────────────────────────────────────────────────── */
+    .tbl    { width: 100%; border-collapse: collapse; font-size: .79rem; }
+    .tbl th {
+      text-align: left; padding: 7px 10px;
+      font-size: .69rem; font-weight: 700; color: var(--ink2);
+      text-transform: uppercase; letter-spacing: .04em;
+      border-bottom: 1.5px solid var(--border); white-space: nowrap;
+    }
+    .tbl td {
+      padding: 7px 10px; border-bottom: 1px solid #faf9f8;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 220px;
+    }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl tr:hover td      { background: #faf9f8; }
+    .tbl th:first-child, .tbl td:first-child { padding-left: 0; }
+
+    /* ── BADGES ──────────────────────────────────────────────────────── */
+    .bdg {
+      font-size: .67rem; font-weight: 700; padding: 2px 7px;
+      border-radius: 2px; text-transform: uppercase; letter-spacing: .04em;
+      display: inline-block; white-space: nowrap;
+    }
+    .b-blue   { background: var(--blue-lt);   color: var(--blue); }
+    .b-green  { background: var(--green-lt);  color: var(--green); }
+    .b-amber  { background: var(--amber-lt);  color: #7a5f00; }
+    .b-red    { background: var(--red-lt);    color: var(--red); }
+    .b-purple { background: var(--purple-lt); color: var(--purple); }
+    .b-gray   { background: #f3f2f1;          color: var(--ink2); }
+
+    /* ── STATUS DOT ──────────────────────────────────────────────────── */
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .d-green  { background: var(--green); }
+    .d-amber  { background: var(--amber); }
+    .d-red    { background: var(--red); }
+    .d-blue   { background: var(--blue); }
+
+    /* ── PROGRESS ────────────────────────────────────────────────────── */
+    .pbar       { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .pbar-fill  { height: 100%; border-radius: 3px; transition: width .4s; }
+    .pb-blue    { background: var(--blue); }
+    .pb-green   { background: var(--green); }
+    .pb-amber   { background: var(--amber); }
+    .pb-red     { background: var(--red); }
+
+    /* ── CHART WRAPPERS ──────────────────────────────────────────────── */
+    .cw-sm  { position: relative; height: 180px; }
+    .cw-md  { position: relative; height: 240px; }
+    .cw-lg  { position: relative; height: 300px; }
+
+    /* ── METRIC TOGGLE BUTTONS ───────────────────────────────────────── */
+    .metric-btns   { display: flex; gap: 4px; }
+    .metric-btn    {
+      font-size: .7rem; font-weight: 600; padding: 3px 11px;
+      border-radius: 2px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--ink2); cursor: pointer;
+    }
+    .metric-btn.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+    /* ── AGENT CARDS ─────────────────────────────────────────────────── */
+    .agent-grid { display: grid; grid-template-columns: repeat(6,1fr); gap: 10px; margin-bottom: 20px; }
+    .agent-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 4px; padding: 14px 12px; box-shadow: var(--shadow);
+      display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px;
+    }
+    .agent-icon {
+      width: 38px; height: 38px; border-radius: 6px;
+      background: var(--blue-lt); display: flex; align-items: center; justify-content: center;
+    }
+    .agent-icon svg { width: 18px; height: 18px; fill: var(--blue); }
+    .agent-name   { font-size: .77rem; font-weight: 700; }
+    .agent-status { font-size: .7rem; color: var(--green); display: flex; align-items: center; gap: 4px; }
+
+    /* ── LEDGER CARDS ────────────────────────────────────────────────── */
+    .ledger-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 20px; }
+    .ledger-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 4px; padding: 14px 16px; box-shadow: var(--shadow);
+    }
+    .ledger-name  { font-size: .76rem; font-weight: 700; margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ledger-row   { display: flex; justify-content: space-between; font-size: .71rem; color: var(--ink2); margin-bottom: 3px; }
+    .ledger-row b { font-weight: 700; }
+
+    /* ── SPOT CARDS ──────────────────────────────────────────────────── */
+    .spot-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 20px; }
+    .spot-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 4px; padding: 14px 16px; box-shadow: var(--shadow);
+    }
+    .spot-hd   { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-weight: 700; font-size: .85rem; }
+    .spot-uci  { font-size: 1.15rem; font-weight: 700; color: var(--blue); margin-bottom: 4px; }
+    .spot-meta { font-size: .71rem; color: var(--ink2); }
+
+    /* ── DEPLOY CARDS ────────────────────────────────────────────────── */
+    .deploy-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 20px; }
+    .deploy-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 4px; padding: 14px 16px; box-shadow: var(--shadow);
+      border-top: 3px solid var(--blue);
+    }
+    .deploy-name { font-size: .75rem; font-weight: 700; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .deploy-row  { font-size: .7rem; color: var(--ink2); margin-bottom: 2px; }
+
+    /* ── TRACE EXPLORER ──────────────────────────────────────────────── */
+    .trace-layout  { display: grid; grid-template-columns: 250px 1fr; gap: 16px; align-items: start; }
+    .trace-sidebar { display: flex; flex-direction: column; gap: 6px; max-height: 640px; overflow-y: auto; }
+    .trace-item {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 4px; padding: 10px 12px; cursor: pointer;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .trace-item:hover  { border-color: var(--blue); }
+    .trace-item.active { border-color: var(--blue); background: var(--blue-lt); box-shadow: 0 0 0 1px #0078d428; }
+    .trace-id   { font-size: .72rem; font-weight: 700; color: var(--blue); margin-bottom: 3px; }
+    .trace-meta { font-size: .69rem; color: var(--ink2); line-height: 1.55; }
+    .timeline   { display: flex; flex-direction: column; gap: 8px; }
+    .tl-row     { display: grid; grid-template-columns: 42px 1fr; gap: 10px; align-items: start; }
+    .tl-num     {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg, #0078d4, #8764b8);
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      font-size: .74rem; font-weight: 700; margin-top: 3px; flex-shrink: 0;
+    }
+    .tl-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 4px; padding: 10px 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    }
+    .tl-lane   { font-size: .67rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+    .tl-title  { font-weight: 700; font-size: .81rem; margin-bottom: 2px; }
+    .tl-arrow  { font-size: .72rem; color: var(--blue); font-weight: 600; margin-bottom: 4px; }
+    .tl-detail { font-size: .78rem; color: var(--ink2); line-height: 1.45; }
+    .tl-toggle {
+      font-size: .7rem; color: var(--blue); font-weight: 600;
+      cursor: pointer; background: none; border: none; padding: 0;
+      font-family: inherit; margin-top: 6px; display: block;
+    }
+    .tl-payload {
+      display: none; margin-top: 6px; background: #f8f7f6;
+      border: 1px solid var(--border); border-radius: 3px;
+      padding: 8px 10px; font-size: .7rem; white-space: pre-wrap;
+      word-break: break-word; color: var(--ink2); max-height: 200px; overflow-y: auto;
+      font-family: "Cascadia Code", "Consolas", monospace;
+    }
+
+    /* ── LANE COLORS ─────────────────────────────────────────────────── */
+    .lc-gatekeeper   { color: var(--green); }
+    .lc-governor     { color: var(--amber); }
+    .lc-modelgateway { color: var(--blue); }
+    .lc-critic       { color: var(--purple); }
+    .lc-auditor      { color: #7a5f00; }
+    .lc-broker       { color: #0f6b70; }
+    .lc-scaler       { color: var(--green); }
+    .lc-workload     { color: var(--ink2); }
+
+    /* ── UTILS ───────────────────────────────────────────────────────── */
+    .fw7   { font-weight: 700; }
+    .c-blue   { color: var(--blue); }
+    .c-green  { color: var(--green); }
+    .c-red    { color: var(--red); }
+    .c-amber  { color: var(--amber); }
+    .c-purple { color: var(--purple); }
+    .c-muted  { color: var(--ink2); }
+    .tag { font-size: .67rem; padding: 1px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 2px; color: var(--ink2); font-weight: 600; }
+    .empty { padding: 28px 0; text-align: center; color: var(--ink2); font-size: .82rem; }
+    .mono  { font-family: "Cascadia Code", "Consolas", monospace; font-size: .78rem; }
+
+    /* ── RESPONSIVE ──────────────────────────────────────────────────── */
+    @media (max-width: 1200px) {
+      .kpi-5 { grid-template-columns: repeat(3,1fr); }
+      .agent-grid { grid-template-columns: repeat(3,1fr); }
+      .ledger-grid { grid-template-columns: repeat(3,1fr); }
+      .deploy-grid { grid-template-columns: repeat(3,1fr); }
+    }
+    @media (max-width: 960px) {
+      .g2, .g3, .g1-2 { grid-template-columns: 1fr; }
+      .kpi-4, .kpi-3 { grid-template-columns: repeat(2,1fr); }
+      .trace-layout { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .nav { display: none; }
+      .kpi-5 { grid-template-columns: repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── SIDEBAR ─────────────────────────────────────────────────────────── -->
+<nav class="nav">
+  <div class="nav-brand">
+    <div class="nav-logo">
+      <svg viewBox="0 0 16 16"><path d="M8 1L1 4.5V8.2c0 3.2 3 6 7 6.8 4-.8 7-3.6 7-6.8V4.5L8 1z"/></svg>
+    </div>
+    <div>
+      <div class="nav-brand-name">Agentic FinOps</div>
+      <div class="nav-brand-sub">Governance Hub</div>
+    </div>
+  </div>
+
+  <div class="nav-group-label">Monitoring</div>
+  <div class="nav-item active" id="nav-overview" onclick="nav('overview')">
+    <svg viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+    Overview
+  </div>
+  <div class="nav-item" id="nav-governance" onclick="nav('governance')">
+    <svg viewBox="0 0 16 16"><path d="M8 1L1 4.5V8.2c0 3.2 3 6 7 6.8 4-.8 7-3.6 7-6.8V4.5L8 1z"/></svg>
+    Governance
+  </div>
+  <div class="nav-item" id="nav-analytics" onclick="nav('analytics')">
+    <svg viewBox="0 0 16 16"><rect x="1" y="9" width="3" height="6"/><rect x="6.5" y="5" width="3" height="10"/><rect x="12" y="1" width="3" height="14"/></svg>
+    Token Analytics
+  </div>
+
+  <div class="nav-group-label">AI Workloads</div>
+  <div class="nav-item" id="nav-workloads" onclick="nav('workloads')">
+    <svg viewBox="0 0 16 16"><circle cx="8" cy="3" r="2.2"/><circle cx="3" cy="13" r="2.2"/><circle cx="13" cy="13" r="2.2"/><path d="M6.2 4.5L3.8 11m2.7-6.5l7.2 6" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+    AI Workloads
+  </div>
+  <div class="nav-item" id="nav-quota" onclick="nav('quota')">
+    <svg viewBox="0 0 16 16"><path d="M2 8h5V2H2v6zm0 6h5v-4H2v4zm7-14v4h5V2H9zm0 6v8h5V8H9z"/></svg>
+    Quota Manager
+  </div>
+
+  <div class="nav-group-label">Diagnostics</div>
+  <div class="nav-item" id="nav-traces" onclick="nav('traces')">
+    <svg viewBox="0 0 16 16"><rect x="1" y="2.5" width="14" height="2"/><rect x="1" y="7" width="10" height="2"/><rect x="1" y="11.5" width="12" height="2"/></svg>
+    Trace Explorer
+  </div>
+
+  <div class="nav-spacer"></div>
+  <hr class="nav-divider">
+  <div class="nav-item" onclick="location.href='/'">
+    <svg viewBox="0 0 16 16"><path d="M10 2.5L5.5 7 10 11.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M6 7h9" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+    Classic View
+  </div>
+</nav>
+
+<!-- ── MAIN ─────────────────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-title" id="topbar-title">Overview</div>
+    <div class="refresh-pill">
+      <div class="rdot" id="rdot"></div>
+      <span id="rstatus">Refreshing…</span>
+    </div>
+    <button class="btn btn-outline" style="font-size:.74rem;padding:4px 12px" onclick="doRefresh()">↻ Refresh</button>
+    <a href="/" class="btn btn-primary" style="font-size:.74rem;padding:4px 12px">Classic View</a>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- ━━━━ OVERVIEW ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div class="section active" id="section-overview">
+      <div class="section-hd">
+        <h2>Overview</h2>
+        <p>Real-time AI inference cost governance · UCI · ATQB · MAG pipeline summary</p>
+      </div>
+
+      <div class="kpi-row kpi-5">
+        <div class="kpi-tile t-blue">
+          <div class="kpi-label">Total Tokens (24h)</div>
+          <div class="kpi-val" id="ov-tokens">—</div>
+          <div class="kpi-sub">Azure Monitor · live data</div>
+        </div>
+        <div class="kpi-tile t-green">
+          <div class="kpi-label">Est. Monthly Savings</div>
+          <div class="kpi-val" id="ov-savings">$0</div>
+          <div class="kpi-sub">auto-applied actions</div>
+        </div>
+        <div class="kpi-tile t-purple">
+          <div class="kpi-label">Latest UCI ($/task)</div>
+          <div class="kpi-val" id="ov-uci">—</div>
+          <div class="kpi-sub">unit cost of inference</div>
+        </div>
+        <div class="kpi-tile t-amber">
+          <div class="kpi-label">Actions Generated</div>
+          <div class="kpi-val" id="ov-actions">0</div>
+          <div class="kpi-sub">auto + pending approval</div>
+        </div>
+        <div class="kpi-tile t-red">
+          <div class="kpi-label">ATQB Hard-Stops</div>
+          <div class="kpi-val" id="ov-stops">0</div>
+          <div class="kpi-sub">HLB kill-switch engagements</div>
+        </div>
+      </div>
+
+      <div class="g2">
+        <div class="card" style="margin-bottom:0">
+          <div class="card-hd">
+            <div class="card-title">Token Burn Rate — 24h</div>
+            <div class="metric-btns">
+              <button class="metric-btn on" onclick="ovMetric('total_tokens',this)">Tokens</button>
+              <button class="metric-btn" onclick="ovMetric('request_count',this)">Requests</button>
+              <button class="metric-btn" onclick="ovMetric('avg_latency_ms',this)">Latency</button>
+            </div>
+          </div>
+          <div class="cw-md"><canvas id="ov-trend-chart"></canvas></div>
+        </div>
+        <div class="card" style="margin-bottom:0">
+          <div class="card-hd">
+            <div class="card-title">ATQB Action Distribution</div>
+          </div>
+          <div class="cw-md"><canvas id="ov-atqb-chart"></canvas></div>
+        </div>
+      </div>
+
+      <div style="height:20px"></div>
+
+      <div class="card-title" style="font-size:.74rem;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">MAG — Multi-Agent Governance Status</div>
+      <div class="agent-grid" id="ov-agents"></div>
+
+      <div class="g2">
+        <div class="card" style="margin-bottom:0">
+          <div class="card-title" style="margin-bottom:12px">Recent FinOps Actions</div>
+          <table class="tbl">
+            <thead><tr><th>State</th><th>Action</th><th>Cloud</th><th>Savings / mo</th></tr></thead>
+            <tbody id="ov-actions-tbl"></tbody>
+          </table>
+        </div>
+        <div class="card" style="margin-bottom:0">
+          <div class="card-title" style="margin-bottom:12px">Recent Cost Signals</div>
+          <table class="tbl">
+            <thead><tr><th>Resource</th><th>Util %</th><th>Anomaly</th><th>$/hr</th></tr></thead>
+            <tbody id="ov-events-tbl"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ━━━━ GOVERNANCE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div class="section" id="section-governance">
+      <div class="section-hd">
+        <h2>Governance</h2>
+        <p>ATQB decision ladder · UCI records · quota ledger status per workload</p>
+      </div>
+
+      <div class="kpi-row kpi-4">
+        <div class="kpi-tile t-blue">
+          <div class="kpi-label">Active Workloads</div>
+          <div class="kpi-val" id="gv-workloads">—</div>
+        </div>
+        <div class="kpi-tile t-green">
+          <div class="kpi-label">Allow Decisions</div>
+          <div class="kpi-val" id="gv-allow">0</div>
+        </div>
+        <div class="kpi-tile t-amber">
+          <div class="kpi-label">Throttle / Quota Shift</div>
+          <div class="kpi-val" id="gv-throttle">0</div>
+        </div>
+        <div class="kpi-tile t-red">
+          <div class="kpi-label">Hard Stops</div>
+          <div class="kpi-val" id="gv-stops">0</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">ATQB Governor Decisions</div>
+        <table class="tbl">
+          <thead>
+            <tr><th>Action</th><th>Workload</th><th>TPW</th><th>Budget %</th><th>Token %</th><th>RL Pressure</th><th>Reason</th></tr>
+          </thead>
+          <tbody id="gv-atqb-tbl"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">UCI History (latest per workload)</div>
+        <table class="tbl">
+          <thead>
+            <tr><th>Workload</th><th>UCI ($/task)</th><th>C_tokens</th><th>C_compute</th><th>C_latency</th><th>N_succ</th><th>Trend</th></tr>
+          </thead>
+          <tbody id="gv-uci-tbl"></tbody>
+        </table>
+      </div>
+
+      <div class="card-title" style="font-size:.74rem;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Quota Ledger Status</div>
+      <div class="ledger-grid" id="gv-ledgers"></div>
+    </div>
+
+    <!-- ━━━━ TOKEN ANALYTICS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div class="section" id="section-analytics">
+      <div class="section-hd">
+        <h2>Token Analytics</h2>
+        <p>Azure Monitor · real token consumption · per-resource and per-deployment breakdown</p>
+      </div>
+
+      <div class="kpi-row kpi-4">
+        <div class="kpi-tile t-blue">
+          <div class="kpi-label">Total Tokens (24h)</div>
+          <div class="kpi-val" id="an-total">—</div>
+        </div>
+        <div class="kpi-tile t-green">
+          <div class="kpi-label">Prompt Tokens</div>
+          <div class="kpi-val" id="an-prompt">—</div>
+        </div>
+        <div class="kpi-tile t-amber">
+          <div class="kpi-label">Completion Tokens</div>
+          <div class="kpi-val" id="an-completion">—</div>
+        </div>
+        <div class="kpi-tile t-purple">
+          <div class="kpi-label">Active Resources</div>
+          <div class="kpi-val" id="an-resources">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title">Per-Deployment Token Trend — Last 24h (hourly)</div>
+          <div class="metric-btns">
+            <button class="metric-btn on" onclick="anMetric('total_tokens',this)">Tokens</button>
+            <button class="metric-btn" onclick="anMetric('request_count',this)">Requests</button>
+            <button class="metric-btn" onclick="anMetric('avg_latency_ms',this)">Latency (ms)</button>
+          </div>
+        </div>
+        <div class="cw-lg"><canvas id="an-trend-chart"></canvas></div>
+        <div id="an-chart-note" style="font-size:.71rem;color:var(--ink2);margin-top:6px;text-align:center"></div>
+      </div>
+
+      <div class="g2">
+        <div class="card" style="margin-bottom:0">
+          <div class="card-title" style="margin-bottom:12px">Resource Summary (Azure Monitor)</div>
+          <table class="tbl">
+            <thead><tr><th>Resource</th><th>Kind</th><th>Resource Group</th><th>Prompt</th><th>Completion</th><th>Total</th></tr></thead>
+            <tbody id="an-res-tbl"></tbody>
+          </table>
+        </div>
+        <div class="card" style="margin-bottom:0">
+          <div class="card-title" style="margin-bottom:12px">Per-Deployment Breakdown</div>
+          <table class="tbl">
+            <thead><tr><th>Deployment</th><th>Model</th><th>Requests</th><th>Total Tokens</th><th>Avg Latency</th></tr></thead>
+            <tbody id="an-dep-tbl"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ━━━━ AI WORKLOADS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div class="section" id="section-workloads">
+      <div class="section-hd">
+        <h2>AI Workloads</h2>
+        <p>Live deployment governance · MAG agent lineup · broker GPU spot market</p>
+      </div>
+
+      <div class="card-title" style="font-size:.74rem;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Live Deployment Governance (ATQB + Azure Monitor)</div>
+      <div class="deploy-grid" id="wl-deploys"></div>
+
+      <div class="card-title" style="font-size:.74rem;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Broker Agent — GPU Spot Market</div>
+      <div class="spot-grid" id="wl-spot"></div>
+
+      <div class="card-title" style="font-size:.74rem;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">MAG Agent Lineup</div>
+      <div class="agent-grid" id="wl-agents"></div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">ATQB Action Distribution (last 100 decisions)</div>
+        <div id="wl-action-dist" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+
+    <!-- ━━━━ QUOTA MANAGER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div class="section" id="section-quota">
+      <div class="section-hd">
+        <h2>Quota Manager</h2>
+        <p>Dynamic quota transfers · rate-limit pressure · token budget management</p>
+      </div>
+
+      <div class="kpi-row kpi-4">
+        <div class="kpi-tile t-blue">
+          <div class="kpi-label">Transfers (last 1h)</div>
+          <div class="kpi-val" id="qt-transfers">—</div>
+        </div>
+        <div class="kpi-tile t-green">
+          <div class="kpi-label">Tokens Shifted</div>
+          <div class="kpi-val" id="qt-shifted">—</div>
+        </div>
+        <div class="kpi-tile t-amber">
+          <div class="kpi-label">Workloads Under Pressure</div>
+          <div class="kpi-val" id="qt-pressure-n">—</div>
+        </div>
+        <div class="kpi-tile t-red">
+          <div class="kpi-label">Max RL Pressure</div>
+          <div class="kpi-val" id="qt-max-p">—</div>
+        </div>
+      </div>
+
+      <div class="g2">
+        <div class="card" style="margin-bottom:0">
+          <div class="card-title" style="margin-bottom:12px">Recent Quota Transfers</div>
+          <table class="tbl">
+            <thead><tr><th>From</th><th>To</th><th>Tokens</th><th>Reason</th></tr></thead>
+            <tbody id="qt-transfer-tbl"></tbody>
+          </table>
+        </div>
+        <div class="card" style="margin-bottom:0">
+          <div class="card-title" style="margin-bottom:12px">Rate-Limit Pressure by Workload</div>
+          <table class="tbl">
+            <thead><tr><th>Workload</th><th>Provider</th><th>429s</th><th>Pressure</th></tr></thead>
+            <tbody id="qt-rl-tbl"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ━━━━ TRACE EXPLORER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div class="section" id="section-traces">
+      <div class="section-hd">
+        <h2>Trace Explorer</h2>
+        <p>End-to-end MAG request traces · step-by-step sequence timeline · payload inspection</p>
+      </div>
+
+      <div class="trace-layout">
+        <div>
+          <div class="card-title" style="font-size:.74rem;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Trace History</div>
+          <div class="trace-sidebar" id="tr-list"></div>
+        </div>
+        <div class="card" style="min-height:400px;margin-bottom:0">
+          <div id="tr-meta" style="font-size:.78rem;color:var(--ink2);padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--border)">
+            Select a trace from the list to view the full sequence timeline.
+          </div>
+          <div class="timeline" id="tr-timeline"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let selTraceId   = null;
+  let lastHistory  = null;
+  let ovChart      = null;
+  let ovAtqbChart  = null;
+  let anChart      = null;
+  let ovMetricKey  = 'total_tokens';
+  let anMetricKey  = 'total_tokens';
+  const expandedKeys = new Set();
+
+  const PAGE_NAMES = { overview:'Overview', governance:'Governance', analytics:'Token Analytics', workloads:'AI Workloads', quota:'Quota Manager', traces:'Trace Explorer' };
+  const COLORS = ['#0078d4','#107c10','#c19c00','#a4262c','#8764b8','#0f6b70','#ca5010','#2d7d9a','#6b2fb5'];
+  const METRIC_LABELS = { total_tokens:'Tokens', request_count:'Requests', avg_latency_ms:'Avg Latency (ms)' };
+  const ACTION_BADGE = { allow:'b-green', throttle:'b-amber', quota_shift:'b-blue', hard_stop:'b-red', downgrade_model:'b-purple', quantize:'b-purple' };
+  const STATE_BADGE  = { auto_applied:'b-green', pending_approval:'b-amber', blocked:'b-red' };
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
+  function nav(id) {
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    document.getElementById('nav-' + id)?.classList.add('active');
+    document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+    document.getElementById('section-' + id)?.classList.add('active');
+    document.getElementById('topbar-title').textContent = PAGE_NAMES[id] || id;
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function fmt(v)   { return Number(v || 0).toLocaleString(); }
+  function esc(s)   { return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
+  function pbcls(p) { if(p>=90) return 'pb-red'; if(p>=70) return 'pb-amber'; return 'pb-blue'; }
+  function abadge(a) { return `<span class="bdg ${ACTION_BADGE[a]||'b-gray'}">${esc(a)}</span>`; }
+  function sbadge(s) { return `<span class="bdg ${STATE_BADGE[s]||'b-gray'}">${esc(s)}</span>`; }
+  function trendEl(t) {
+    const cls = t==='rising'?'c-red':t==='falling'?'c-green':'c-muted';
+    return `<span class="fw7 ${cls}">${t==='rising'?'↑':t==='falling'?'↓':'→'} ${esc(t)}</span>`;
+  }
+
+  // ── Metric toggles ─────────────────────────────────────────────────────────
+  function ovMetric(m, btn) {
+    ovMetricKey = m;
+    btn.closest('.metric-btns').querySelectorAll('.metric-btn').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    if (lastHistory) renderOvChart(lastHistory);
+  }
+  function anMetric(m, btn) {
+    anMetricKey = m;
+    btn.closest('.metric-btns').querySelectorAll('.metric-btn').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    if (lastHistory) renderAnChart(lastHistory);
+  }
+
+  // ── Charts ─────────────────────────────────────────────────────────────────
+  function buildLineOptions(yLabel) {
+    return {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, padding: 10 } } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { color: '#f3f2f1' } },
+        y: { beginAtZero: true, ticks: { font: { size: 10 } }, grid: { color: '#f3f2f1' },
+             title: { display: !!yLabel, text: yLabel||'', font: { size: 10 } } },
+      },
+    };
+  }
+
+  function renderOvChart(data) {
+    if (!data?.labels?.length) return;
+    const labels = data.labels.map(ts => { const d = new Date(ts); return `${String(d.getUTCHours()).padStart(2,'0')}:00`; });
+    const datasets = data.series.map((s, i) => ({
+      label: s.deployment_name,
+      data: s[ovMetricKey],
+      borderColor: COLORS[i % COLORS.length],
+      backgroundColor: COLORS[i % COLORS.length] + '18',
+      fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2,
+    }));
+    const ctx = document.getElementById('ov-trend-chart');
+    if (!ctx) return;
+    if (ovChart) { ovChart.data.labels = labels; ovChart.data.datasets = datasets; ovChart.update('none'); }
+    else ovChart = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: buildLineOptions(METRIC_LABELS[ovMetricKey]) });
+  }
+
+  function renderAnChart(data) {
+    const note = document.getElementById('an-chart-note');
+    if (!data?.labels?.length) { if(note) note.textContent = 'No hourly data yet — waiting for Azure Monitor cache refresh.'; return; }
+    if (note) note.textContent = `${data.labels.length} hourly buckets · ${data.series.length} deployment(s) · last: ${data.labels[data.labels.length-1]}`;
+    const labels = data.labels.map(ts => {
+      const d = new Date(ts);
+      return `${d.toLocaleDateString('en-US',{month:'short',day:'2-digit',timeZone:'UTC'})} ${String(d.getUTCHours()).padStart(2,'0')}:00`;
+    });
+    const datasets = data.series.map((s, i) => ({
+      label: `${s.deployment_name} / ${s.resource_name}`,
+      data: s[anMetricKey],
+      borderColor: COLORS[i % COLORS.length],
+      backgroundColor: COLORS[i % COLORS.length] + '18',
+      fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2,
+    }));
+    const ctx = document.getElementById('an-trend-chart');
+    if (!ctx) return;
+    if (anChart) {
+      anChart.data.labels = labels; anChart.data.datasets = datasets;
+      anChart.options.scales.y.title.text = METRIC_LABELS[anMetricKey];
+      anChart.update('none');
+    } else anChart = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: buildLineOptions(METRIC_LABELS[anMetricKey]) });
+  }
+
+  function renderAtqbPie(counts) {
+    const ACOLORS = { allow:'#107c10', throttle:'#c19c00', quota_shift:'#0078d4', hard_stop:'#a4262c', downgrade_model:'#8764b8', quantize:'#8764b8' };
+    const labels = Object.keys(counts), data = Object.values(counts);
+    if (!labels.length) return;
+    const bgColors = labels.map(l => ACOLORS[l] || '#a19f9d');
+    const ctx = document.getElementById('ov-atqb-chart');
+    if (!ctx) return;
+    if (ovAtqbChart) {
+      ovAtqbChart.data.labels = labels; ovAtqbChart.data.datasets[0].data = data; ovAtqbChart.data.datasets[0].backgroundColor = bgColors; ovAtqbChart.update('none');
+    } else {
+      ovAtqbChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data, backgroundColor: bgColors, borderWidth: 2, borderColor: '#fff' }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 10 }, boxWidth: 10 } } } },
+      });
+    }
+  }
+
+  // ── Agent HTML ─────────────────────────────────────────────────────────────
+  const AGENT_ICONS = {
+    Gatekeeper: '<path d="M8 1L1 4.5V8.2c0 3.2 3 6 7 6.8 4-.8 7-3.6 7-6.8V4.5L8 1z"/>',
+    Auditor:    '<rect x="1" y="2.5" width="14" height="2"/><rect x="1" y="7" width="10" height="2"/><rect x="1" y="11.5" width="12" height="2"/>',
+    Governor:   '<rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6" stroke="#0078d4" stroke-width="1.5" fill="none"/>',
+    Broker:     '<path d="M2 8h5V2H2v6zm0 6h5v-4H2v4zm7-14v4h5V2H9zm0 6v8h5V8H9z"/>',
+    Critic:     '<circle cx="8" cy="8" r="6.5"/><path d="M5.5 5.5l5 5m0-5l-5 5" stroke="#0078d4" stroke-width="1.5" fill="none"/>',
+    Scaler:     '<rect x="1" y="9" width="3" height="6"/><rect x="6.5" y="5" width="3" height="10"/><rect x="12" y="1" width="3" height="14"/>',
+  };
+  function agentCards(names) {
+    return names.map(n => `
+      <div class="agent-card">
+        <div class="agent-icon"><svg viewBox="0 0 16 16" width="18" height="18" fill="#0078d4">${AGENT_ICONS[n]||'<circle cx="8" cy="8" r="6.5"/>'}</svg></div>
+        <div class="agent-name">${n}</div>
+        <div class="agent-status"><span class="dot d-green"></span> Active</div>
+      </div>`).join('');
+  }
+
+  // ── Trace ──────────────────────────────────────────────────────────────────
+  function laneClass(step) {
+    const raw = (step.to === 'Workload' ? step.from : step.to).toLowerCase().replace(/\s/g,'');
+    return `lc-${raw}`;
+  }
+  function laneName(step) { return step.to === 'Workload' ? step.from : step.to; }
+
+  function renderTraceList(traces) {
+    const el = document.getElementById('tr-list');
+    if (!el) return;
+    el.innerHTML = traces.map(t => `
+      <div class="trace-item ${t.request_id === selTraceId ? 'active' : ''}" data-trace-id="${esc(t.request_id)}">
+        <div class="trace-id">${esc(t.request_id.slice(0,22))}…</div>
+        <div style="margin:3px 0"><span class="bdg b-purple">${esc(t.intent)}</span></div>
+        <div class="trace-meta">${esc(t.workload_id.replace('workload-',''))}<br>${t.sequence_trace.length} steps &nbsp;·&nbsp; ${esc(t.timestamp.slice(0,19).replace('T',' '))} UTC</div>
+      </div>`).join('');
+  }
+
+  function renderTimeline(trace) {
+    const metaEl = document.getElementById('tr-meta');
+    const tlEl   = document.getElementById('tr-timeline');
+    if (!trace) { metaEl.textContent = 'Select a trace from the list to view the full sequence timeline.'; tlEl.innerHTML = ''; return; }
+    metaEl.innerHTML = `<span class="fw7">${esc(trace.request_id)}</span> &nbsp;·&nbsp; workload: <span class="c-blue">${esc(trace.workload_id)}</span> &nbsp;·&nbsp; intent: <span class="bdg b-purple">${esc(trace.intent)}</span> &nbsp;·&nbsp; ${esc(trace.timestamp.slice(0,19).replace('T',' '))} UTC`;
+    tlEl.innerHTML = trace.sequence_trace.map(step => {
+      const key    = `${trace.request_id}:${step.step}`;
+      const isOpen = expandedKeys.has(key);
+      return `
+      <div class="tl-row">
+        <div><div class="tl-num">${step.step}</div></div>
+        <div class="tl-card">
+          <div class="tl-lane ${laneClass(step)}">${esc(step.from)} → ${esc(step.to)} &nbsp;<span class="tag">${esc(laneName(step))}</span></div>
+          <div class="tl-title">${esc(step.box)}</div>
+          <div class="tl-arrow">${esc(step.arrow)}</div>
+          <div class="tl-detail">${esc(step.detail)}</div>
+          <button class="tl-toggle" data-key="${esc(key)}" onclick="togglePayload(this)">${isOpen?'▼ Collapse JSON':'▶ Expand JSON'}</button>
+          <pre class="tl-payload" id="pl-${esc(key)}" style="display:${isOpen?'block':'none'}">${esc(JSON.stringify(step.payload,null,2))}</pre>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function togglePayload(btn) {
+    const key = btn.getAttribute('data-key');
+    const pre = document.getElementById('pl-' + key);
+    if (!pre) return;
+    const open = pre.style.display === 'block';
+    pre.style.display = open ? 'none' : 'block';
+    btn.textContent = open ? '▶ Expand JSON' : '▼ Collapse JSON';
+    if (open) expandedKeys.delete(key); else expandedKeys.add(key);
+  }
+
+  // ── Main refresh ───────────────────────────────────────────────────────────
+  async function doRefresh() {
+    const rdot   = document.getElementById('rdot');
+    const rstatus = document.getElementById('rstatus');
+    rdot?.classList.add('spinning');
+
+    try {
+      const [mR, aR, eR, uR, atR, ledR, trR, rlR, magR, bqR, mrR, seqR, aoR, adR, thR] = await Promise.all([
+        fetch('/api/metrics'),
+        fetch('/api/actions?limit=10'),
+        fetch('/api/events?limit=10'),
+        fetch('/api/uci?limit=30'),
+        fetch('/api/atqb/decisions?limit=20'),
+        fetch('/api/atqb/ledgers'),
+        fetch('/api/atqb/transfers?limit=30'),
+        fetch('/api/atqb/rate-limits'),
+        fetch('/api/mag/status'),
+        fetch('/api/broker/quotes'),
+        fetch('/api/mag/results?limit=50'),
+        fetch('/api/mag/sequence-traces?limit=15'),
+        fetch('/api/openai/usage'),
+        fetch('/api/openai/deployments'),
+        fetch('/api/openai/token-history'),
+      ]);
+      const metrics   = await mR.json();
+      const actions   = await aR.json();
+      const events    = await eR.json();
+      const uciData   = await uR.json();
+      const atqbData  = await atR.json();
+      const ledgers   = await ledR.json();
+      const transfers = await trR.json();
+      const rls       = await rlR.json();
+      const magStat   = await magR.json();
+      const quotes    = await bqR.json();
+      const magRes    = await mrR.json();
+      const traces    = await seqR.json();
+      const aoai      = await aoR.json();
+      const depls     = await adR.json();
+      const tokHist   = await thR.json();
+      lastHistory = tokHist;
+
+      const counts    = magStat.atqb_action_counts || {};
+      const aoTotal   = aoai.reduce((s,r) => s+(r.total_tokens||0), 0);
+      const aoPrompt  = aoai.reduce((s,r) => s+(r.prompt_tokens||0), 0);
+      const aoCompl   = aoai.reduce((s,r) => s+(r.completion_tokens||0), 0);
+      const magByWl   = Object.fromEntries(magRes.map(r => [r.workload_id, r]));
+      const qByProv   = Object.fromEntries((quotes||[]).map(q => [q.provider, q]));
+
+      // ── OVERVIEW ────────────────────────────────────────────────────────
+      document.getElementById('ov-tokens').textContent  = aoai.length ? fmt(aoTotal) : fmt(metrics.top_tokens_used_total||0);
+      document.getElementById('ov-savings').textContent = `$${metrics.estimated_monthly_savings_usd||0}`;
+      document.getElementById('ov-actions').textContent = fmt(metrics.action_count||0);
+      document.getElementById('ov-stops').textContent   = fmt(counts.hard_stop||0);
+      if (magRes.length) document.getElementById('ov-uci').textContent = `$${Number(magRes[0].uci||0).toFixed(5)}`;
+
+      renderOvChart(tokHist);
+      renderAtqbPie(counts);
+
+      const agentNames = magStat.agents || ['Gatekeeper','Auditor','Governor','Broker','Critic','Scaler'];
+      ['ov-agents','wl-agents'].forEach(id => { const el = document.getElementById(id); if(el) el.innerHTML = agentCards(agentNames); });
+
+      document.getElementById('ov-actions-tbl').innerHTML = actions.map(a => `
+        <tr>
+          <td>${sbadge(a.state)}</td>
+          <td>${esc(a.recommendation.action_type)}</td>
+          <td>${esc(a.recommendation.signal.cloud)}</td>
+          <td class="fw7 c-green">$${a.recommendation.expected_monthly_savings_usd}</td>
+        </tr>`).join('') || `<tr><td colspan="4" class="empty">No actions yet.</td></tr>`;
+
+      document.getElementById('ov-events-tbl').innerHTML = events.map(e => `
+        <tr>
+          <td>${esc(e.resource_name)}</td>
+          <td>${e.utilization_pct}</td>
+          <td>${e.anomaly_score}</td>
+          <td>${esc(String(e.estimated_hourly_cost_usd))}</td>
+        </tr>`).join('') || `<tr><td colspan="4" class="empty">No signals yet.</td></tr>`;
+
+      // ── GOVERNANCE ──────────────────────────────────────────────────────
+      document.getElementById('gv-workloads').textContent = fmt(magStat.workload_count||ledgers.length);
+      document.getElementById('gv-allow').textContent     = fmt(counts.allow||0);
+      document.getElementById('gv-throttle').textContent  = fmt((counts.throttle||0)+(counts.quota_shift||0));
+      document.getElementById('gv-stops').textContent     = fmt(counts.hard_stop||0);
+
+      document.getElementById('gv-atqb-tbl').innerHTML = atqbData.map(d => `
+        <tr>
+          <td>${abadge(d.action)}</td>
+          <td class="mono c-blue" title="${esc(d.workload_id)}">${esc(d.workload_id.replace('workload-','').slice(0,28))}</td>
+          <td>${Number(d.tpw).toFixed(2)}</td>
+          <td>${(d.budget_utilization*100).toFixed(1)}%</td>
+          <td>${(d.token_utilization*100).toFixed(1)}%</td>
+          <td>${Number(d.rate_limit_pressure||0).toFixed(2)}</td>
+          <td class="c-muted" title="${esc(d.reason)}">${esc((d.reason||'').slice(0,55))}…</td>
+        </tr>`).join('') || `<tr><td colspan="7" class="empty">No decisions yet.</td></tr>`;
+
+      const seen = new Set();
+      const uciUniq = uciData.filter(u => { if(seen.has(u.workload_id)) return false; seen.add(u.workload_id); return true; });
+      document.getElementById('gv-uci-tbl').innerHTML = uciUniq.map(u => {
+        const traj = (magRes.find(r => r.workload_id === u.workload_id)||{}).uci_trajectory || 'stable';
+        return `<tr>
+          <td class="mono" title="${esc(u.workload_id)}">${esc(u.workload_id.replace('workload-','').slice(0,28))}</td>
+          <td class="fw7 c-purple">$${Number(u.uci).toFixed(5)}</td>
+          <td>$${Number(u.c_tokens||0).toFixed(4)}</td>
+          <td>$${Number(u.c_compute||0).toFixed(4)}</td>
+          <td>$${Number(u.c_latency_penalty||0).toFixed(4)}</td>
+          <td>${u.n_successful_tasks}</td>
+          <td>${trendEl(traj)}</td>
+        </tr>`;
+      }).join('') || `<tr><td colspan="7" class="empty">No UCI records yet.</td></tr>`;
+
+      document.getElementById('gv-ledgers').innerHTML = ledgers.map(l => {
+        const bp = Math.round(l.budget_utilization_pct||0);
+        const tp = Math.round(l.token_utilization_pct||0);
+        return `<div class="ledger-card">
+          <div class="ledger-name" title="${esc(l.workload_id)}">${esc(l.workload_id.replace('workload-',''))}</div>
+          <div class="ledger-row"><span>Budget utilization</span><b class="${bp>=90?'c-red':bp>=70?'c-amber':'c-green'}">${bp}%</b></div>
+          <div class="pbar" style="margin-bottom:8px"><div class="pbar-fill ${pbcls(bp)}" style="width:${bp}%"></div></div>
+          <div class="ledger-row"><span>Token utilization</span><b class="${tp>=90?'c-red':tp>=70?'c-amber':'c-green'}">${tp}%</b></div>
+          <div class="pbar" style="margin-bottom:8px"><div class="pbar-fill ${pbcls(tp)}" style="width:${tp}%"></div></div>
+          <div class="ledger-row"><span>Cost used</span><span>$${l.cost_used_usd} / $${l.hlb_usd||200}</span></div>
+          <div class="ledger-row"><span>Tokens used</span><span>${fmt(l.tokens_used)}</span></div>
+        </div>`;
+      }).join('') || '<div class="empty">No ledger data yet.</div>';
+
+      // ── TOKEN ANALYTICS ─────────────────────────────────────────────────
+      document.getElementById('an-total').textContent      = aoai.length ? fmt(aoTotal) : '—';
+      document.getElementById('an-prompt').textContent     = aoai.length ? fmt(aoPrompt) : '—';
+      document.getElementById('an-completion').textContent = aoai.length ? fmt(aoCompl) : '—';
+      document.getElementById('an-resources').textContent  = aoai.length ? fmt(aoai.length) : '—';
+      renderAnChart(tokHist);
+
+      document.getElementById('an-res-tbl').innerHTML = aoai.map(r => `
+        <tr>
+          <td title="${esc(r.resource_name)}">${esc(r.resource_name)}</td>
+          <td><span class="tag">${esc(r.kind)}</span></td>
+          <td>${esc(r.resource_group)}</td>
+          <td>${fmt(r.prompt_tokens)}</td>
+          <td>${fmt(r.completion_tokens)}</td>
+          <td class="fw7">${fmt(r.total_tokens)}</td>
+        </tr>`).join('') || `<tr><td colspan="6" class="empty">Loading Azure Monitor data…</td></tr>`;
+
+      document.getElementById('an-dep-tbl').innerHTML = depls.map(d => `
+        <tr>
+          <td>${esc(d.deployment_name)}</td>
+          <td><span class="tag">${esc(d.model_name)}</span></td>
+          <td>${fmt(d.request_count)}</td>
+          <td class="fw7">${fmt(d.total_tokens)}</td>
+          <td>${Number(d.avg_latency_ms||0).toFixed(0)} ms</td>
+        </tr>`).join('') || `<tr><td colspan="5" class="empty">No deployment data yet.</td></tr>`;
+
+      // ── AI WORKLOADS ────────────────────────────────────────────────────
+      document.getElementById('wl-deploys').innerHTML = depls.length ? depls.map(d => {
+        const mr   = magByWl[d.workload_id];
+        const act  = mr ? mr.atqb_action : 'pending';
+        const uci  = mr ? `$${Number(mr.uci||0).toFixed(5)}` : '—';
+        const pct  = aoTotal > 0 ? Math.min(100, (Number(d.total_tokens||0)/aoTotal)*100) : 0;
+        return `<div class="deploy-card">
+          <div class="deploy-name" title="${esc(d.deployment_name)}">${esc(d.deployment_name)}</div>
+          <div style="margin-bottom:6px">${abadge(act)}</div>
+          <div class="deploy-row">UCI: <b>${uci}</b></div>
+          <div class="deploy-row">${fmt(d.request_count)} req &nbsp;·&nbsp; ${Number(d.avg_latency_ms||0).toFixed(0)} ms avg</div>
+          <div class="pbar" style="margin-top:8px"><div class="pbar-fill ${pbcls(pct)}" style="width:${pct}%"></div></div>
+          <div style="font-size:.68rem;color:var(--ink2);margin-top:3px">${pct.toFixed(1)}% of total tokens</div>
+        </div>`;
+      }).join('') : `<div class="empty" style="grid-column:span 4">No live deployments yet.</div>`;
+
+      const prov = magStat.provider_uci || {};
+      document.getElementById('wl-spot').innerHTML = Object.entries(prov).map(([p,v]) => {
+        const q = qByProv[p] || {};
+        const live = q.source && !q.source.includes('bootstrap') && q.source !== 'baseline';
+        return `<div class="spot-card">
+          <div class="spot-hd">${esc(p)} <span class="bdg ${live?'b-green':'b-amber'}">${live?'LIVE':'FALLBACK'}</span></div>
+          <div class="spot-uci">$${Number(v).toFixed(5)}</div>
+          <div class="spot-meta">spot ×${q.spot_multiplier==null?'—':Number(q.spot_multiplier).toFixed(3)} · age ${q.age_seconds==null?'n/a':Number(q.age_seconds).toFixed(0)+'s'}</div>
+          <div class="spot-meta c-muted" style="margin-top:2px">${esc(q.source||'baseline')}</div>
+        </div>`;
+      }).join('') || `<div class="empty" style="grid-column:span 3">No spot market data yet.</div>`;
+
+      document.getElementById('wl-action-dist').innerHTML = Object.entries(counts).map(([k,v]) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--panel);border:1px solid var(--border);border-radius:4px">
+          ${abadge(k)}
+          <span style="font-size:1.2rem;font-weight:700">${fmt(v)}</span>
+        </div>`).join('') || `<div class="empty">No decisions yet.</div>`;
+
+      // ── QUOTA MANAGER ───────────────────────────────────────────────────
+      const hourAgo   = Date.now() - 3600000;
+      const recentT   = (transfers||[]).filter(t => { const ts = Date.parse(t.timestamp||''); return isFinite(ts) && ts >= hourAgo; });
+      const shifted   = recentT.reduce((s,t) => s+Number(t.tokens||0), 0);
+      const pressured = (rls||[]).filter(r => Number(r.pressure||0) >= 0.4);
+      const maxP      = (rls||[]).reduce((mx,r) => Math.max(mx, Number(r.pressure||0)), 0);
+      document.getElementById('qt-transfers').textContent  = fmt(recentT.length);
+      document.getElementById('qt-shifted').textContent    = fmt(shifted);
+      document.getElementById('qt-pressure-n').textContent = fmt(pressured.length);
+      document.getElementById('qt-max-p').textContent      = maxP > 0 ? maxP.toFixed(2) : '0.00';
+
+      document.getElementById('qt-transfer-tbl').innerHTML = (transfers||[]).slice(0,15).map(t => `
+        <tr>
+          <td class="mono" title="${esc(t.from_workload_id)}">${esc((t.from_workload_id||'').replace('workload-','').slice(0,22))}</td>
+          <td class="mono" title="${esc(t.to_workload_id)}">${esc((t.to_workload_id||'').replace('workload-','').slice(0,22))}</td>
+          <td class="fw7">${fmt(t.tokens)}</td>
+          <td class="c-muted" title="${esc(t.reason)}">${esc((t.reason||'').slice(0,48))}…</td>
+        </tr>`).join('') || `<tr><td colspan="4" class="empty">No quota transfers yet.</td></tr>`;
+
+      document.getElementById('qt-rl-tbl').innerHTML = (rls||[]).sort((a,b)=>Number(b.pressure||0)-Number(a.pressure||0)).map(r => {
+        const p = Math.round(Number(r.pressure||0)*100);
+        return `<tr>
+          <td class="mono">${esc((r.workload_id||'').replace('workload-','').slice(0,24))}</td>
+          <td>${esc(r.provider||'—')}</td>
+          <td>${fmt(r.http_429_count||0)}</td>
+          <td style="width:140px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="fw7 ${p>=60?'c-red':p>=40?'c-amber':'c-green'}">${Number(r.pressure||0).toFixed(2)}</span>
+              <div class="pbar" style="flex:1"><div class="pbar-fill ${pbcls(p)}" style="width:${p}%"></div></div>
+            </div>
+          </td>
+        </tr>`;
+      }).join('') || `<tr><td colspan="4" class="empty">No rate-limit telemetry.</td></tr>`;
+
+      // ── TRACES ──────────────────────────────────────────────────────────
+      if (traces.length && (!selTraceId || !traces.some(t => t.request_id === selTraceId))) {
+        selTraceId = traces[0].request_id;
+      }
+      renderTraceList(traces);
+      renderTimeline(traces.find(t => t.request_id === selTraceId) || traces[0] || null);
+
+    } catch (err) { console.error('Refresh error:', err); }
+
+    rdot?.classList.remove('spinning');
+    if (rstatus) rstatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  }
+
+  // Trace click delegation
+  document.addEventListener('click', e => {
+    const item = e.target.closest('[data-trace-id]');
+    if (!item) return;
+    selTraceId = item.getAttribute('data-trace-id');
+    doRefresh();
+  });
+
+  doRefresh();
+  setInterval(doRefresh, 10000);
+</script>
+</body>
+</html>
