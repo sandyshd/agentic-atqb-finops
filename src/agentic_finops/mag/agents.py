@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import random
-from collections import deque
+import json
+import re
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import ClassVar
 import time
 
 from agentic_finops.atqb.controller import ATQBController
@@ -432,26 +434,255 @@ class GovernorAgent:
 # ---------------------------------------------------------------------------
 @dataclass
 class CriticAgent:
-    base_success_rate: float = 0.92
+    """Deterministic quality gate for inference outputs.
+
+    Decides whether an output should count toward N_successful_tasks in the
+    UCI denominator. The check is rule-based (no randomness) so UCI and the
+    downstream MUA computation are reproducible signal, not noise.
+
+    Failure conditions (any one is sufficient):
+      1. Output is empty / whitespace-only / shorter than `min_length`.
+      2. Output matches a known failure signature (refusal, error envelope,
+         truncation marker, etc.).
+      3. Output is degenerate (one token / phrase repeats above threshold).
+      4. Latency catastrophically exceeds SLO (>= `hard_latency_multiplier`).
+      5. `expected_format == "json"` and the output is not valid JSON.
+
+    A `success_override` path remains available in the orchestrator for
+    callers that have ground-truth labels (e.g. eval harness, user feedback).
+    """
+
+    min_length: int = 5
+    hard_latency_multiplier: float = 2.0
+    repetition_threshold: float = 0.6  # max share of any single token
+
+    _FAILURE_PATTERNS: ClassVar[tuple[re.Pattern[str], ...]] = (
+        re.compile(r"^\s*(sorry|i\s+cannot|i\s+can'?t|i'?m\s+unable)\b", re.IGNORECASE),
+        re.compile(r"\b(as an ai language model)\b", re.IGNORECASE),
+        re.compile(r"<\|endoftext\|>", re.IGNORECASE),
+        re.compile(r"\[ERROR\]|\bERROR:\s|\bException:\s", re.IGNORECASE),
+    )
 
     def validate(
-        self, output_text: str | None, latency_ms: float, slo_latency_ms: float
+        self,
+        output_text: str | None,
+        latency_ms: float,
+        slo_latency_ms: float,
+        *,
+        expected_format: str | None = None,
     ) -> bool:
-        if not output_text or len(output_text) < 5:
+        # 1. Empty / too short
+        if output_text is None:
             return False
-        # Latency degradation reduces effective quality probability
-        latency_ratio = latency_ms / max(1.0, slo_latency_ms)
-        adjusted_rate = self.base_success_rate * min(1.0, 1.2 - latency_ratio * 0.2)
-        return random.random() < max(0.0, adjusted_rate)
+        text = output_text.strip()
+        if len(text) < self.min_length:
+            return False
+
+        # 2. Hard latency violation
+        if latency_ms >= max(1.0, slo_latency_ms) * self.hard_latency_multiplier:
+            return False
+
+        # 3. Known failure signatures
+        for pattern in self._FAILURE_PATTERNS:
+            if pattern.search(text):
+                return False
+
+        # 4. JSON envelope with explicit error
+        if text.startswith("{"):
+            try:
+                obj = json.loads(text)
+                if isinstance(obj, dict) and "error" in obj:
+                    return False
+            except json.JSONDecodeError:
+                if expected_format == "json":
+                    return False
+
+        # 5. Format contract
+        if expected_format == "json" and not text.startswith(("{", "[")):
+            return False
+
+        # 6. Degenerate / repetitive output
+        tokens = re.findall(r"\w+", text.lower())
+        if len(tokens) >= 8:
+            most_common_count = Counter(tokens).most_common(1)[0][1]
+            if most_common_count / len(tokens) > self.repetition_threshold:
+                return False
+
+        return True
 
 
 # ---------------------------------------------------------------------------
 # Scaler Agent
-# Manages GPU scaling within SLO constraints and provides scaling signals
-# back to the Governor/Broker.
+# Forecasts per-workload token demand (EWMA), estimates the cost delta of
+# over- vs under-provisioning at the next window, and emits a structured
+# recommendation that flows back to the Governor (decision context) and the
+# Optimizer (parallel side action).
 # ---------------------------------------------------------------------------
 @dataclass
+class ScalerRecommendation:
+    """Structured output of the Scaler Agent.
+
+    Carried alongside the ATQB decision so the Governor's audit trail and the
+    Optimizer's execution record both see the forecasted demand and the
+    estimated cost delta of the recommended replica change.
+    """
+
+    workload_id: str
+    action: str                       # "scale_up" | "scale_down" | "no_change"
+    forecast_tpw: float               # EWMA forecast — tokens per window
+    capacity_tpw: float               # current replica capacity per window
+    pressure_ratio: float             # forecast / capacity (0..inf)
+    cost_delta_usd: float             # signed: positive = added cost, negative = saved
+    replicas_current: int
+    replicas_recommended: int
+    latency_ratio: float              # latency_ms / slo_latency_ms
+    reasoning: str
+    timestamp: str
+
+
+@dataclass
 class ScalerAgent:
+    """Forecast-driven elastic scaling recommender.
+
+    Maintains per-workload token-demand history and produces both a discrete
+    action and a $-denominated cost delta so downstream agents (Governor,
+    Optimizer) can act on the signal rather than just observe it.
+    """
+
+    # ── State ──────────────────────────────────────────────────────────
+    _tpw_history: dict[str, deque[int]] = field(default_factory=dict)
+    _replicas: dict[str, int] = field(default_factory=dict)
+    _ewma_estimate: dict[str, float] = field(default_factory=dict)
+    _last_recommendation: dict[str, ScalerRecommendation] = field(default_factory=dict)
+    _recent: deque[ScalerRecommendation] = field(default_factory=lambda: deque(maxlen=200))
+
+    # ── Config ────────────────────────────────────────────────────────
+    ewma_alpha: float = 0.4
+    capacity_tokens_per_replica_per_window: int = 50_000
+    initial_replicas: int = 1
+    upper_pressure_threshold: float = 0.85   # forecast/capacity above → scale up
+    lower_pressure_threshold: float = 0.30   # forecast/capacity below → scale down
+    latency_scale_up_ratio: float = 1.25     # latency-driven override
+    history_window: int = 32
+
+    def observe(self, workload_id: str, tokens_total: int) -> None:
+        """Record the most recent window's token usage for `workload_id`."""
+        if tokens_total < 0:
+            tokens_total = 0
+        history = self._tpw_history.setdefault(
+            workload_id, deque(maxlen=self.history_window)
+        )
+        history.appendleft(int(tokens_total))
+        # EWMA forecast: e_t = α·x_t + (1-α)·e_{t-1}
+        prev = self._ewma_estimate.get(workload_id, float(tokens_total))
+        self._ewma_estimate[workload_id] = (
+            self.ewma_alpha * float(tokens_total)
+            + (1.0 - self.ewma_alpha) * prev
+        )
+
+    def forecast_tpw(self, workload_id: str) -> float:
+        """Return the EWMA forecast of next-window token demand."""
+        return float(self._ewma_estimate.get(workload_id, 0.0))
+
+    def current_replicas(self, workload_id: str) -> int:
+        return int(self._replicas.get(workload_id, self.initial_replicas))
+
+    def capacity(self, workload_id: str) -> float:
+        return float(
+            self.current_replicas(workload_id)
+            * self.capacity_tokens_per_replica_per_window
+        )
+
+    def recommend(
+        self,
+        *,
+        workload_id: str,
+        latency_ms: float,
+        slo_latency_ms: float,
+        uci_per_token: float,
+    ) -> ScalerRecommendation:
+        """Produce a forecast-grounded scaling recommendation.
+
+        `uci_per_token` is the current per-token cost (from the Auditor's UCI
+        record), used to translate replica delta × capacity into $ cost delta.
+        """
+        forecast = self.forecast_tpw(workload_id)
+        replicas_current = self.current_replicas(workload_id)
+        capacity_per_replica = max(1.0, float(self.capacity_tokens_per_replica_per_window))
+        capacity_tpw = max(1.0, replicas_current * capacity_per_replica)
+        pressure_ratio = forecast / capacity_tpw
+        latency_ratio = latency_ms / max(1.0, slo_latency_ms)
+
+        # Decide replica delta. Latency hard-trigger overrides forecast.
+        if latency_ratio >= self.latency_scale_up_ratio or pressure_ratio >= self.upper_pressure_threshold:
+            action = "scale_up"
+            target = max(
+                replicas_current + 1,
+                int((forecast / capacity_per_replica) + 0.999),  # ceil
+            )
+            replicas_recommended = max(replicas_current + 1, target)
+            reasoning = (
+                f"forecast {forecast:.0f} tok/window vs capacity {capacity_tpw:.0f} "
+                f"(pressure={pressure_ratio:.2f}); latency={latency_ratio:.2f}× SLO"
+            )
+        elif (
+            replicas_current > 1
+            and pressure_ratio <= self.lower_pressure_threshold
+            and latency_ratio < self.latency_scale_up_ratio
+        ):
+            action = "scale_down"
+            replicas_recommended = max(1, replicas_current - 1)
+            reasoning = (
+                f"forecast {forecast:.0f} tok/window vs capacity {capacity_tpw:.0f} "
+                f"(pressure={pressure_ratio:.2f}); under-utilized, releasing 1 replica"
+            )
+        else:
+            action = "no_change"
+            replicas_recommended = replicas_current
+            reasoning = (
+                f"forecast {forecast:.0f} tok/window vs capacity {capacity_tpw:.0f} "
+                f"(pressure={pressure_ratio:.2f}); within bounds"
+            )
+
+        # Cost delta: replica delta × capacity per replica × $/token, signed.
+        replica_delta = replicas_recommended - replicas_current
+        cost_delta_usd = round(
+            replica_delta * capacity_per_replica * max(0.0, uci_per_token),
+            6,
+        )
+
+        rec = ScalerRecommendation(
+            workload_id=workload_id,
+            action=action,
+            forecast_tpw=round(forecast, 2),
+            capacity_tpw=round(capacity_tpw, 2),
+            pressure_ratio=round(pressure_ratio, 4),
+            cost_delta_usd=cost_delta_usd,
+            replicas_current=replicas_current,
+            replicas_recommended=replicas_recommended,
+            latency_ratio=round(latency_ratio, 4),
+            reasoning=reasoning,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+        self._last_recommendation[workload_id] = rec
+        self._recent.appendleft(rec)
+        return rec
+
+    def apply(self, recommendation: ScalerRecommendation) -> None:
+        """Commit a recommendation as the new replica state for the workload.
+
+        Called by the Optimizer after guardrails clear the scaling action.
+        """
+        self._replicas[recommendation.workload_id] = recommendation.replicas_recommended
+
+    def last_recommendation(self, workload_id: str) -> ScalerRecommendation | None:
+        return self._last_recommendation.get(workload_id)
+
+    def recent(self, limit: int = 30) -> list[ScalerRecommendation]:
+        return list(self._recent)[:limit]
+
+    # Backwards-compatible string API (kept for any callers that still want
+    # just the discrete verb).
     def scale_recommendation(self, latency_ms: float, slo_latency_ms: float) -> str:
         ratio = latency_ms / max(1.0, slo_latency_ms)
         if ratio > 1.25:

@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from agentic_finops.adapters.openai_metrics import AzureOpenAIMetricsAdapter
 from agentic_finops.adapters.registry import get_adapters
 from agentic_finops.config import settings
+from agentic_finops.focus import FocusRow, cost_signal_to_focus
 from agentic_finops.mag.orchestrator import MAGOrchestrator
 from agentic_finops.mag.quote_adapters import ProviderQuoteManager
 from agentic_finops.models import ActionRecord, CostSignal
@@ -162,6 +163,47 @@ def metrics() -> dict[str, float | int]:
     return store.metrics()
 
 
+# ── FOCUS v1.0 endpoint ───────────────────────────────────────────────────
+
+@app.get("/api/focus/rows", response_model=list[FocusRow])
+def focus_rows(limit: int = 100) -> list[FocusRow]:
+    """Return cost telemetry normalized to the FOCUS v1.0 schema.
+
+    Combines:
+      1. FOCUS rows derived from cached cost signals stored in the in-memory
+         signal store (covers all adapter sources via `CostSignal`).
+      2. Adapter-native FOCUS rows (currently Azure) when an adapter exposes
+         `latest_focus_rows()`.
+    """
+    rows: list[FocusRow] = []
+
+    for signal in store.latest_events(limit=limit):
+        try:
+            rows.append(cost_signal_to_focus(signal))
+        except Exception:
+            continue
+
+    for adapter in adapters:
+        provider = getattr(adapter, "latest_focus_rows", None)
+        if callable(provider):
+            try:
+                rows.extend(provider())
+            except Exception:
+                continue
+
+    # De-duplicate by (ResourceId, ChargePeriodStart) preserving first occurrence
+    seen: set[tuple[str | None, str]] = set()
+    unique_rows: list[FocusRow] = []
+    for row in rows:
+        key = (row.ResourceId, row.ChargePeriodStart)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_rows.append(row)
+
+    return unique_rows[: max(1, limit)]
+
+
 # ── UCI endpoints ─────────────────────────────────────────────────────────
 
 @app.get("/api/uci")
@@ -217,6 +259,14 @@ def mag_results(limit: int = 20) -> list[dict]:
 @app.get("/api/mag/sequence-traces")
 def mag_sequence_traces(limit: int = 20) -> list[dict]:
     return mag.latest_sequence_traces(limit=limit)
+
+
+@app.get("/api/mag/scaler")
+def mag_scaler(limit: int = 30) -> list[dict]:
+    """Latest Scaler Agent recommendations (forecast + cost delta)."""
+    from dataclasses import asdict
+
+    return [asdict(r) for r in mag.scaler.recent(limit=limit)]
 
 
 # ── Azure OpenAI / AI Services token consumption ─────────────────────────

@@ -125,9 +125,12 @@ Workload Request
     ↓ [Step 7]
 ┌──────────────────────────────────────────────────────────┐
 │ SCALER AGENT: GPU Capacity Recommendations               │
-│  • Forecast token demand by workload                     │
-│  • Recommend GPU scaling up/down                         │
-│  • Estimate cost delta of over/under-provisioning        │
+│  • EWMA forecast of token demand per workload (α=0.4)    │
+│  • Pressure = forecast / capacity (replicas × 50k tok)   │
+│  • Recommends scale_up at ≥0.85 or latency ≥1.25× SLO    │
+│  • Recommends scale_down at <0.30 (min 1 replica)        │
+│  • Cost delta in USD using UCI per-token, fed back into  │
+│    Governor reasoning + Optimizer side-action            │
 └──────────────────────────────────────────────────────────┘
     ↓ [Step 8-12]
 Policy Guardrails → Optimization Executor → Gatekeeper → Workload Response
@@ -265,6 +268,8 @@ AgenticFinOps/
 │   ├── test_atqb.py                 # ATQB controller tests (downgrade, quota_shift, throttle)
 │   ├── test_mag.py                  # MAG orchestration tests
 │   ├── test_uci.py                  # UCI calculation tests
+│   ├── test_focus.py                # FOCUS v1.0 schema + converter tests
+│   ├── test_scaler.py               # Scaler EWMA forecast + cost-delta tests
 │   └── __init__.py
 │
 ├── .env.example                     # Configuration template
@@ -296,6 +301,7 @@ AgenticFinOps/
 - `GET /api/mag/status` — Current MAG state (6 agents, ledgers, latest rules)
 - `GET /api/mag/results?limit=50` — Inference results with governance decisions
 - `GET /api/mag/sequence-traces?limit=50` — Full 12-step orchestration traces
+- `GET /api/mag/scaler?limit=30` — Scaler Agent recommendations (forecast tok/window, capacity, pressure ratio, replicas current → recommended, projected cost delta, reasoning)
 
 ### Provider & Cost
 
@@ -309,6 +315,32 @@ AgenticFinOps/
 
 - `GET /api/events?limit=25` — Cost signal events
 - `GET /api/actions?limit=25` — Recommended actions (with approval state)
+
+### FOCUS v1.0 Compatibility
+
+- `GET /api/focus/rows?limit=100` — Cost telemetry normalized to the
+  [FinOps Open Cost and Usage Specification (FOCUS) v1.0](https://focus.finops.org/)
+  schema. The endpoint converts the platform's internal `CostSignal` records
+  into FOCUS rows containing the v1.0 mandatory columns:
+
+  | Group | Columns |
+  | --- | --- |
+  | Identifiers | `BillingAccountId`, `BillingAccountName`, `SubAccountId`, `SubAccountName`, `ResourceId`, `ResourceName`, `RegionId`, `RegionName` |
+  | Provider | `Provider`, `Publisher`, `InvoiceIssuer` |
+  | Time | `ChargePeriodStart`, `ChargePeriodEnd`, `BillingPeriodStart`, `BillingPeriodEnd` |
+  | Service | `ServiceName`, `ServiceCategory` |
+  | Cost | `BilledCost`, `EffectiveCost`, `ListCost`, `ContractedCost` |
+  | Pricing | `ListUnitPrice`, `ContractedUnitPrice`, `PricingCategory`, `PricingQuantity`, `PricingUnit` |
+  | Usage | `ConsumedQuantity`, `ConsumedUnit` |
+  | Charge | `ChargeCategory`, `ChargeClass`, `ChargeFrequency`, `ChargeDescription` |
+  | Other | `BillingCurrency`, `Tags` |
+
+  Provider attribution is mapped automatically (Azure → `Microsoft`, AWS →
+  `AWS`, GCP → `Google`). Service-category mapping covers Compute, Storage,
+  Databases, Networking, AI and Machine Learning, Analytics, and Identity
+  per the FOCUS allowed-values list, with `Other` as fallback. Currency is
+  USD; commitment-discount fields are populated when contracted pricing is
+  applied.
 
 ---
 
@@ -335,6 +367,8 @@ AZURE_SUBSCRIPTION_ID=<your-subscription-id>
 AZURE_TENANT_ID=<your-tenant-id>
 AZURE_ADAPTER_ENABLED=true
 AZURE_COST_LOOKBACK_HOURS=72
+AZURE_OPENAI_LOOKBACK_HOURS=24      # Hours of token-history pulled from Azure Monitor
+                                    # (must be >= window shown by Token Burn Rate chart)
 
 # Broker quote settings
 BROKER_QUOTE_REFRESH_SECONDS=45     # Refresh provider quotes every 45s
@@ -421,6 +455,8 @@ python -m pytest -v
 python -m pytest tests/test_atqb.py -v       # ATQB decision ladder
 python -m pytest tests/test_mag.py -v        # MAG orchestration
 python -m pytest tests/test_uci.py -v        # UCI calculations
+python -m pytest tests/test_focus.py -v      # FOCUS v1.0 mapping
+python -m pytest tests/test_scaler.py -v     # Scaler forecast + cost delta
 
 # Test coverage
 python -m pytest --cov=src.agentic_finops tests/
@@ -432,6 +468,8 @@ python -m pytest --cov=src.agentic_finops tests/
 - **MAG**: 12-step orchestration traces, agent ordering, audit ledger
 - **UCI**: Provider pricing, spot multipliers, egress cost
 - **Guardrails**: Hard-limit enforcement, approval workflows
+- **FOCUS v1.0**: 29 mandatory columns, billed/effective cost math, contracted-discount handling, Azure/AWS provider mapping, service-category mapping, calendar-month billing period, JSON serialization
+- **Scaler**: EWMA build-up, no_change / scale_up (pressure & latency) / scale_down branches, replica state commit on apply, cost-delta scaling with UCI per-token, negative-input clamping, legacy string API
 
 **Current Status**: 35+ tests passing (100% pass rate)
 

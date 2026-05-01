@@ -67,6 +67,7 @@ class MAGOrchestrator:
         audit_event: dict,
         route: dict,
         timestamp: str,
+        scaler_payload: dict | None = None,
     ) -> list[dict]:
         return [
             {
@@ -185,6 +186,7 @@ class MAGOrchestrator:
                 "detail": "Scaler produced elasticity recommendation",
                 "payload": {
                     "scale_action": scale_action,
+                    **(scaler_payload or {}),
                 },
                 "timestamp": timestamp,
             },
@@ -283,8 +285,36 @@ class MAGOrchestrator:
         trajectory  = self.auditor.anomaly_trajectory(workload_id)
         audit_event = self.auditor.emit_audit_event(record, latest_uci)
 
+        # ── Step 4b: Scaler observes demand + forecasts next window ───────
+        # Done before the Governor so the forecast + cost-delta can feed back
+        # into the ATQB decision context.
+        total_tokens_window = int(tokens_input + tokens_output)
+        self.scaler.observe(workload_id, total_tokens_window)
+        uci_per_token = (
+            (latest_uci.c_tokens / max(1, latest_uci.n_successful_tasks))
+            if latest_uci and latest_uci.n_successful_tasks > 0
+            else 0.0
+        )
+        scaler_rec = self.scaler.recommend(
+            workload_id=workload_id,
+            latency_ms=latency_ms,
+            slo_latency_ms=slo_latency_ms,
+            uci_per_token=uci_per_token,
+        )
+
         # ── Step 5: Governor enforces ATQB / HLB ──────────────────────────
         decision = self.governor.enforce(workload_id, tpw, model_name, latest_uci)
+        # Feedback loop: when the Scaler forecasts a sustained over-capacity
+        # condition that would *add* projected cost, append the signal to the
+        # Governor's reason chain so downstream consumers (ATQB ledger,
+        # dashboard, audit trail) can attribute the action to scaling
+        # pressure as well as budget pressure.
+        if scaler_rec.action == "scale_up" and scaler_rec.cost_delta_usd > 0:
+            decision.reason = (
+                f"{decision.reason} | scaler: forecast pressure "
+                f"{scaler_rec.pressure_ratio:.2f}× capacity, +"
+                f"${scaler_rec.cost_delta_usd:.4f} projected"
+            )
 
         transfers_applied: list[dict] = []
         if decision.action == ActuatorAction.quota_shift:
@@ -310,8 +340,12 @@ class MAGOrchestrator:
         self.governor.record_model_outcome(
             workload_id=workload_id,
             model_name=model_name,
-            attempts=request_count,
-            successes=request_count if success else 0,
+            # One validation gate per record: the Critic produces a single
+            # success/failure decision regardless of how many calls the
+            # record aggregates. Using request_count here would over-count
+            # evidence in the Beta-posterior used by the MUA downgrade rule.
+            attempts=1,
+            successes=1 if success else 0,
             total_cost_usd=actual_cost,
             avg_latency_ms=latency_ms,
         )
@@ -323,7 +357,9 @@ class MAGOrchestrator:
         self.broker.update_provider_uci("aws", max(0.000001, uci_val * 0.98))
 
         # ── Step 8: Scaler — GPU scale recommendation ──────────────────────
-        scale_action = self.scaler.scale_recommendation(latency_ms, slo_latency_ms)
+        # Recommendation was computed at step 4b; here we expose the verb so
+        # the existing trace contract is preserved.
+        scale_action = scaler_rec.action
 
         # ── Step 9: Policy guardrail check before autonomous action ───────
         guardrail = self.guardrails.evaluate(
@@ -338,7 +374,11 @@ class MAGOrchestrator:
             action=guardrail.enforced_action,
             model_name=decision.recommended_model or model_name,
             provider=provider,
+            scaler_recommendation=scaler_rec,
         )
+        # Guardrails passed → commit the new replica count as the live state.
+        if guardrail.allowed and scale_action != "no_change":
+            self.scaler.apply(scaler_rec)
 
         # ── Step 11: Gatekeeper routes compound response ───────────────────
         route = self.gatekeeper.route(workload_id, tpw, decision, intent)
@@ -358,6 +398,14 @@ class MAGOrchestrator:
             audit_event=audit_event,
             route=route,
             timestamp=ts,
+            scaler_payload={
+                "forecast_tpw": scaler_rec.forecast_tpw,
+                "capacity_tpw": scaler_rec.capacity_tpw,
+                "pressure_ratio": scaler_rec.pressure_ratio,
+                "cost_delta_usd": scaler_rec.cost_delta_usd,
+                "replicas_current": scaler_rec.replicas_current,
+                "replicas_recommended": scaler_rec.replicas_recommended,
+            },
         )
 
         result = {
@@ -389,6 +437,17 @@ class MAGOrchestrator:
             "success":             success,
             "quota_transfers":     transfers_applied,
             "scale_action":        scale_action,
+            "scaler":              {
+                "action":              scaler_rec.action,
+                "forecast_tpw":        scaler_rec.forecast_tpw,
+                "capacity_tpw":        scaler_rec.capacity_tpw,
+                "pressure_ratio":      scaler_rec.pressure_ratio,
+                "cost_delta_usd":      scaler_rec.cost_delta_usd,
+                "replicas_current":    scaler_rec.replicas_current,
+                "replicas_recommended": scaler_rec.replicas_recommended,
+                "latency_ratio":       scaler_rec.latency_ratio,
+                "reasoning":           scaler_rec.reasoning,
+            },
             "optimization_execution": execution,
             "sequence_trace":       sequence_trace,
             "budget_utilization":  round(decision.budget_utilization, 4),

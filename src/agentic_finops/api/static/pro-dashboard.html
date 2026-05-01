@@ -215,6 +215,8 @@
     .tbl tr:last-child td { border-bottom: none; }
     .tbl tr:hover td      { background: #faf9f8; }
     .tbl th:first-child, .tbl td:first-child { padding-left: 0; }
+    .tbl th.ta-r, .tbl td.ta-r { text-align: right; }
+    .tbl th.ta-c, .tbl td.ta-c { text-align: center; }
 
     /* ── BADGES ──────────────────────────────────────────────────────── */
     .bdg {
@@ -357,6 +359,7 @@
 
     /* ── UTILS ───────────────────────────────────────────────────────── */
     .fw7   { font-weight: 700; }
+    .ta-r  { text-align: right; }
     .c-blue   { color: var(--blue); }
     .c-green  { color: var(--green); }
     .c-red    { color: var(--red); }
@@ -427,6 +430,10 @@
   <div class="nav-item" id="nav-traces" onclick="nav('traces')">
     <svg viewBox="0 0 16 16"><rect x="1" y="2.5" width="14" height="2"/><rect x="1" y="7" width="10" height="2"/><rect x="1" y="11.5" width="12" height="2"/></svg>
     Trace Explorer
+  </div>
+  <div class="nav-item" id="nav-focus" onclick="nav('focus')">
+    <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2.2"/></svg>
+    FOCUS v1.0
   </div>
 
   <div class="nav-spacer"></div>
@@ -580,6 +587,30 @@
 
       <div class="card-title" style="font-size:.74rem;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Quota Ledger Status</div>
       <div class="ledger-grid" id="gv-ledgers"></div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">Scaler Agent — Forecast &amp; Cost Delta</div>
+        <table class="tbl" style="table-layout:fixed">
+          <colgroup>
+            <col style="width:20%">
+            <col style="width:10%">
+            <col style="width:11%">
+            <col style="width:9%">
+            <col style="width:8%">
+            <col style="width:8%">
+            <col style="width:9%">
+            <col style="width:25%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Workload</th><th>Action</th>
+              <th class="ta-c">Forecast (tok/win)</th><th class="ta-c">Capacity</th><th class="ta-c">Pressure</th>
+              <th class="ta-c">Replicas</th><th class="ta-c">Cost Δ</th><th>Reasoning</th>
+            </tr>
+          </thead>
+          <tbody id="gv-scaler-tbl"></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- ━━━━ TOKEN ANALYTICS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
@@ -705,6 +736,62 @@
       </div>
     </div>
 
+    <!-- ━━━━ FOCUS v1.0 TELEMETRY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div class="section" id="section-focus">
+      <div class="section-hd">
+        <h2>FOCUS v1.0 Telemetry <span class="bdg b-green" style="margin-left:8px;font-size:.62rem;vertical-align:middle">FinOps Open Cost &amp; Usage Spec</span></h2>
+        <p>Cost signals normalized to the <a href="https://focus.finops.org/" target="_blank" rel="noopener" style="color:var(--blue)">FinOps Open Cost &amp; Usage Specification (FOCUS) v1.0</a> · vendor-neutral schema · Microsoft / AWS / Google attribution</p>
+      </div>
+
+      <div class="kpi-row kpi-4">
+        <div class="kpi-tile t-blue">
+          <div class="kpi-label">FOCUS Rows</div>
+          <div class="kpi-val" id="fc-count">—</div>
+        </div>
+        <div class="kpi-tile t-green">
+          <div class="kpi-label">Total Billed Cost</div>
+          <div class="kpi-val" id="fc-billed">—</div>
+        </div>
+        <div class="kpi-tile t-purple">
+          <div class="kpi-label">Total Effective Cost</div>
+          <div class="kpi-val" id="fc-effective">—</div>
+        </div>
+        <div class="kpi-tile t-amber">
+          <div class="kpi-label">Providers</div>
+          <div class="kpi-val" id="fc-providers">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div class="card-title" style="margin:0">FOCUS-Aligned Billing Rows</div>
+          <div style="display:flex;gap:8px">
+            <a class="btn btn-outline" style="font-size:.72rem;padding:4px 10px" href="/api/focus/rows?limit=500" target="_blank" rel="noopener">View JSON</a>
+            <button class="btn btn-outline" style="font-size:.72rem;padding:4px 10px" onclick="downloadFocusCsv()">↓ Download CSV</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Provider</th><th>Service</th><th>Category</th><th>Resource</th>
+                <th>Region</th><th>Period</th><th class="ta-r">Billed</th><th class="ta-r">Effective</th><th class="ta-r">List</th><th>Pricing</th>
+              </tr>
+            </thead>
+            <tbody id="fc-tbl"></tbody>
+          </table>
+        </div>
+        <div id="fc-empty" style="display:none;text-align:center;padding:18px;color:var(--ink2);font-size:.78rem">
+          No FOCUS rows yet — waiting for cost-signal stream.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">Mandatory FOCUS v1.0 Columns Emitted</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;font-size:.74rem;color:var(--ink2)" id="fc-cols"></div>
+      </div>
+    </div>
+
     <!-- ━━━━ TRACE EXPLORER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
     <div class="section" id="section-traces">
       <div class="section-hd">
@@ -740,7 +827,19 @@
   let anMetricKey  = 'total_tokens';
   const expandedKeys = new Set();
 
-  const PAGE_NAMES = { overview:'Overview', governance:'Governance', analytics:'Token Analytics', workloads:'AI Workloads', quota:'Quota Manager', traces:'Trace Explorer' };
+  const PAGE_NAMES = { overview:'Overview', governance:'Governance', analytics:'Token Analytics', workloads:'AI Workloads', quota:'Quota Manager', traces:'Trace Explorer', focus:'FOCUS v1.0 Telemetry' };
+  const FOCUS_MANDATORY_COLS = [
+    'BillingAccountId','SubAccountId','ResourceId','RegionId',
+    'Provider','Publisher','InvoiceIssuer',
+    'ChargePeriodStart','ChargePeriodEnd','BillingPeriodStart','BillingPeriodEnd',
+    'ServiceName','ServiceCategory',
+    'BilledCost','EffectiveCost','ListCost','ContractedCost',
+    'ListUnitPrice','ContractedUnitPrice','PricingCategory','PricingQuantity','PricingUnit',
+    'ConsumedQuantity','ConsumedUnit',
+    'ChargeCategory','ChargeFrequency','ChargeDescription',
+    'BillingCurrency','Tags',
+  ];
+  let lastFocusRows = [];
   const COLORS = ['#0078d4','#107c10','#c19c00','#a4262c','#8764b8','#0f6b70','#ca5010','#2d7d9a','#6b2fb5'];
   const METRIC_LABELS = { total_tokens:'Tokens', request_count:'Requests', avg_latency_ms:'Avg Latency (ms)' };
   const ACTION_BADGE = { allow:'b-green', throttle:'b-amber', quota_shift:'b-blue', hard_stop:'b-red', downgrade_model:'b-purple', quantize:'b-purple' };
@@ -928,7 +1027,7 @@
     rdot?.classList.add('spinning');
 
     try {
-      const [mR, aR, eR, uR, atR, ledR, trR, rlR, magR, bqR, mrR, seqR, aoR, adR, thR] = await Promise.all([
+      const [mR, aR, eR, uR, atR, ledR, trR, rlR, magR, bqR, mrR, seqR, aoR, adR, thR, fcR, scR] = await Promise.all([
         fetch('/api/metrics'),
         fetch('/api/actions?limit=10'),
         fetch('/api/events?limit=10'),
@@ -944,6 +1043,8 @@
         fetch('/api/openai/usage'),
         fetch('/api/openai/deployments'),
         fetch('/api/openai/token-history'),
+        fetch('/api/focus/rows?limit=200'),
+        fetch('/api/mag/scaler?limit=30'),
       ]);
       const metrics   = await mR.json();
       const actions   = await aR.json();
@@ -960,7 +1061,12 @@
       const aoai      = await aoR.json();
       const depls     = await adR.json();
       const tokHist   = await thR.json();
+      const focusRows = fcR.ok ? await fcR.json() : [];
+      const scalerRecs = scR && scR.ok ? await scR.json() : [];
       lastHistory = tokHist;
+      lastFocusRows = focusRows;
+      renderFocus(focusRows);
+      renderScaler(scalerRecs);
 
       const counts    = magStat.atqb_action_counts || {};
       const aoTotal   = aoai.reduce((s,r) => s+(r.total_tokens||0), 0);
@@ -1158,6 +1264,126 @@
     selTraceId = item.getAttribute('data-trace-id');
     doRefresh();
   });
+
+  // ── FOCUS v1.0 rendering ───────────────────────────────────────────────
+  function fmtMoney(v) {
+    const n = Number(v||0);
+    if (n >= 1) return `$${n.toFixed(2)}`;
+    if (n >= 0.01) return `$${n.toFixed(4)}`;
+    return `$${n.toFixed(6)}`;
+  }
+  function shortId(s) {
+    if (!s) return '—';
+    const parts = String(s).split('/');
+    return parts[parts.length-1] || s;
+  }
+  function shortTs(s) {
+    if (!s) return '—';
+    try { return new Date(s).toISOString().slice(5,16).replace('T',' '); } catch { return s; }
+  }
+
+  function renderFocus(rows) {
+    rows = Array.isArray(rows) ? rows : [];
+    const tbody = document.getElementById('fc-tbl');
+    const empty = document.getElementById('fc-empty');
+    const cols  = document.getElementById('fc-cols');
+    if (!tbody) return;
+
+    document.getElementById('fc-count').textContent = fmt(rows.length);
+    const billed = rows.reduce((s,r) => s + Number(r.BilledCost||0), 0);
+    const effective = rows.reduce((s,r) => s + Number(r.EffectiveCost||0), 0);
+    document.getElementById('fc-billed').textContent = fmtMoney(billed);
+    document.getElementById('fc-effective').textContent = fmtMoney(effective);
+    const provs = new Set(rows.map(r => r.Provider).filter(Boolean));
+    document.getElementById('fc-providers').textContent = provs.size || '—';
+
+    if (!rows.length) {
+      tbody.innerHTML = '';
+      if (empty) empty.style.display = 'block';
+    } else {
+      if (empty) empty.style.display = 'none';
+      tbody.innerHTML = rows.slice(0, 50).map(r => `
+        <tr>
+          <td><span class="tag">${esc(r.Provider||'—')}</span></td>
+          <td class="mono">${esc(r.ServiceName||'—')}</td>
+          <td>${esc(r.ServiceCategory||'—')}</td>
+          <td class="mono" title="${esc(r.ResourceId||'')}">${esc(shortId(r.ResourceName||r.ResourceId))}</td>
+          <td>${esc(r.RegionId||'—')}</td>
+          <td class="mono" style="font-size:.72rem">${esc(shortTs(r.ChargePeriodStart))} → ${esc(shortTs(r.ChargePeriodEnd))}</td>
+          <td class="ta-r fw7">${fmtMoney(r.BilledCost)}</td>
+          <td class="ta-r">${fmtMoney(r.EffectiveCost)}</td>
+          <td class="ta-r c-muted">${fmtMoney(r.ListCost)}</td>
+          <td><span class="bdg ${r.PricingCategory==='Committed'?'b-purple':'b-blue'}">${esc(r.PricingCategory||'—')}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    if (cols && !cols.dataset.populated) {
+      cols.innerHTML = FOCUS_MANDATORY_COLS.map(c =>
+        `<div style="padding:4px 8px;background:var(--blue-lt);border-radius:3px;color:var(--blue);font-family:Consolas,monospace;font-size:.7rem">${esc(c)}</div>`
+      ).join('');
+      cols.dataset.populated = '1';
+    }
+  }
+
+  function renderScaler(recs) {
+    const tbody = document.getElementById('gv-scaler-tbl');
+    if (!tbody) return;
+    if (!Array.isArray(recs) || !recs.length) {
+      tbody.innerHTML = `<tr><td colspan="8" class="empty">No scaler recommendations yet.</td></tr>`;
+      return;
+    }
+    const latestByWl = new Map();
+    for (const r of recs) {
+      if (!latestByWl.has(r.workload_id)) latestByWl.set(r.workload_id, r);
+    }
+    const rows = Array.from(latestByWl.values());
+    const actionBadge = a => {
+      if (a === 'scale_up')   return `<span class="bdg b-amber">scale_up</span>`;
+      if (a === 'scale_down') return `<span class="bdg b-green">scale_down</span>`;
+      return `<span class="bdg b-blue">no_change</span>`;
+    };
+    tbody.innerHTML = rows.map(r => {
+      const pressure = Number(r.pressure_ratio || 0);
+      const pcls = pressure >= 0.85 ? 'c-red' : pressure >= 0.5 ? 'c-amber' : 'c-green';
+      const cd = Number(r.cost_delta_usd || 0);
+      const cdcls = cd > 0 ? 'c-red' : cd < 0 ? 'c-green' : 'c-muted';
+      const cdSign = cd > 0 ? '+' : '';
+      return `<tr>
+        <td class="mono">${esc((r.workload_id||'').replace('workload-','').slice(0,24))}</td>
+        <td>${actionBadge(r.action)}</td>
+        <td class="ta-c mono">${fmt(Math.round(Number(r.forecast_tpw||0)))}</td>
+        <td class="ta-c mono c-muted">${fmt(Math.round(Number(r.capacity_tpw||0)))}</td>
+        <td class="ta-c fw7 ${pcls}">${pressure.toFixed(2)}×</td>
+        <td class="ta-c mono">${r.replicas_current} → ${r.replicas_recommended}</td>
+        <td class="ta-c fw7 ${cdcls}">${cdSign}$${Math.abs(cd).toFixed(4)}</td>
+        <td style="font-size:.72rem;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.reasoning||'')}">${esc(r.reasoning||'')}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function downloadFocusCsv() {
+    const rows = lastFocusRows || [];
+    if (!rows.length) { alert('No FOCUS rows available yet.'); return; }
+    const cols = Object.keys(rows[0]);
+    const escCsv = v => {
+      if (v === null || v === undefined) return '';
+      const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      return /[",\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s;
+    };
+    const csv = [cols.join(',')]
+      .concat(rows.map(r => cols.map(c => escCsv(r[c])).join(',')))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `focus-v1-rows-${new Date().toISOString().slice(0,19).replaceAll(':','-')}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   doRefresh();
   setInterval(doRefresh, 10000);

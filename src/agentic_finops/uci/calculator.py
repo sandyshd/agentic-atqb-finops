@@ -52,7 +52,12 @@ def compute_uci(records: list[InferenceRecord]) -> UCIRecord | None:
         max(0.0, r.latency_ms - r.slo_latency_ms) * LATENCY_PENALTY_PER_MS_USD
         for r in records
     )
-    n_successful = sum(r.request_count for r in records if r.success)
+    # One validation gate decision per record. `request_count` legitimately
+    # scales cost (c_compute), but the UCI denominator must reflect the number
+    # of *validated* outcomes — not how many calls were aggregated into a
+    # single record. Using request_count here would amplify one Critic decision
+    # by the batch size and bias UCI / MUA evidence.
+    n_successful = sum(1 for r in records if r.success)
     uci = (c_tokens + c_compute + c_latency_penalty) / max(1, n_successful)
 
     return UCIRecord(

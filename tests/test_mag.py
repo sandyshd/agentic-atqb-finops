@@ -156,3 +156,63 @@ def test_quota_transfer_applied_when_quota_shift_needs_capacity() -> None:
     assert result["atqb_action"] == "quota_shift"
     assert len(result["quota_transfers"]) >= 1
     assert any(t["to_workload_id"] == "workload-hot" for t in result["quota_transfers"])
+
+# ──────────────────────────────────────────────────────────────────────────
+# CriticAgent: deterministic quality gate (no randomness)
+# ──────────────────────────────────────────────────────────────────────────
+
+from agentic_finops.mag.agents import CriticAgent
+
+
+def test_critic_rejects_empty_and_short_outputs() -> None:
+    critic = CriticAgent()
+    assert critic.validate(None, 100, 1000) is False
+    assert critic.validate("", 100, 1000) is False
+    assert critic.validate("   ", 100, 1000) is False
+    assert critic.validate("hi", 100, 1000) is False
+
+
+def test_critic_accepts_normal_output() -> None:
+    critic = CriticAgent()
+    assert critic.validate("This is a coherent multi-token answer.", 100, 1000) is True
+
+
+def test_critic_rejects_known_failure_signatures() -> None:
+    critic = CriticAgent()
+    assert critic.validate("Sorry, I cannot help with that request.", 100, 1000) is False
+    assert critic.validate("I'm unable to comply with this.", 100, 1000) is False
+    assert critic.validate("As an AI language model, I do not have opinions.", 100, 1000) is False
+    assert critic.validate("hello world <|endoftext|> garbage", 100, 1000) is False
+    assert critic.validate("[ERROR] upstream timeout occurred", 100, 1000) is False
+
+
+def test_critic_rejects_hard_latency_violation() -> None:
+    critic = CriticAgent()
+    # 2x SLO is the hard cutoff; 2.5x must fail even for a clean output
+    assert critic.validate("A perfectly fine answer body.", 2500, 1000) is False
+    # Just under threshold passes
+    assert critic.validate("A perfectly fine answer body.", 1900, 1000) is True
+
+
+def test_critic_rejects_degenerate_repetition() -> None:
+    critic = CriticAgent()
+    repeating = "spam " * 30
+    assert critic.validate(repeating, 100, 1000) is False
+
+
+def test_critic_rejects_json_error_envelope() -> None:
+    critic = CriticAgent()
+    assert critic.validate('{"error": "rate_limited"}', 100, 1000) is False
+
+
+def test_critic_enforces_json_format_when_requested() -> None:
+    critic = CriticAgent()
+    assert critic.validate("not a json reply", 100, 1000, expected_format="json") is False
+    assert critic.validate('{"answer": 42}', 100, 1000, expected_format="json") is True
+
+
+def test_critic_is_deterministic() -> None:
+    critic = CriticAgent()
+    text = "Deterministic gate, repeated checks must agree."
+    results = {critic.validate(text, 200, 1000) for _ in range(50)}
+    assert results == {True}

@@ -67,3 +67,48 @@ def test_request_cost_positive() -> None:
     rec = _rec(1000, 500, 800, 2000, True)
     cost = request_cost(rec)
     assert cost > 0
+
+# ──────────────────────────────────────────────────────────────────────────
+# UCI denominator: validation gate count, not batched request_count
+# ──────────────────────────────────────────────────────────────────────────
+
+def test_uci_denominator_decouples_from_batch_size() -> None:
+    # Single record representing a batch of 10 successful calls.
+    record = InferenceRecord(
+        request_id="batch-1",
+        workload_id="workload-batch",
+        model_name="gpt-4",
+        tpw=0.8,
+        request_count=10,
+        tokens_input=500,
+        tokens_output=200,
+        latency_ms=1000,
+        slo_latency_ms=2000,
+        success=True,
+        timestamp="2026-01-01T00:00:00+00:00",
+    )
+    uci = compute_uci([record])
+    assert uci is not None
+    # Denominator must reflect ONE validated outcome, not 10.
+    assert uci.n_successful_tasks == 1
+    # Compute cost still scales with the 10 calls (cost accounting unchanged).
+    assert uci.c_compute > 0
+    # Sanity: c_compute equals 10 * COMPUTE_OVERHEAD_PER_CALL_USD
+    from agentic_finops.uci.calculator import COMPUTE_OVERHEAD_PER_CALL_USD
+    assert abs(uci.c_compute - 10 * COMPUTE_OVERHEAD_PER_CALL_USD) < 1e-9
+
+
+def test_uci_denominator_counts_records_not_calls() -> None:
+    # Three records: two successful (request_count 5 and 7), one failed (rc=3).
+    recs = [
+        InferenceRecord(
+            request_id=f"r{i}", workload_id="w", model_name="gpt-4", tpw=0.8,
+            request_count=rc, tokens_input=300, tokens_output=100,
+            latency_ms=500, slo_latency_ms=2000, success=success,
+            timestamp="2026-01-01T00:00:00+00:00",
+        )
+        for i, (rc, success) in enumerate([(5, True), (7, True), (3, False)])
+    ]
+    uci = compute_uci(recs)
+    assert uci is not None
+    assert uci.n_successful_tasks == 2

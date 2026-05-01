@@ -10,6 +10,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from agentic_finops.focus import FocusRow, cost_signal_to_focus
 from agentic_finops.models import CostSignal
 
 
@@ -117,6 +118,23 @@ class AzureAdapter:
                 self.min_query_interval_seconds,
             )
             return list(self._cached_signals)
+
+    def latest_focus_rows(self) -> list[FocusRow]:
+        """Return the cached cost signals converted to FOCUS v1.0 rows.
+
+        Read-only view over the most recent `collect()` results; does not
+        trigger a refresh. Provider attribution is set from `signal.cloud`
+        ("azure" → Microsoft).
+        """
+        rows: list[FocusRow] = []
+        for signal in self._cached_signals:
+            try:
+                rows.append(
+                    cost_signal_to_focus(signal, lookback_hours=self.lookback_hours)
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug("FOCUS conversion failed for %s: %s", signal.resource_id, exc)
+        return rows
 
     def _subscription_ids_from_env(self) -> list[str]:
         many = os.getenv("AZURE_SUBSCRIPTION_IDS", "")
