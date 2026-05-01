@@ -38,7 +38,7 @@ Agentic FinOps is a **governance platform** that autonomously manages generative
 
 This implementation is based on two research algorithms:
 
-1. **Multi-Agent Governance (MAG)**: A 6-agent orchestration system (Gatekeeper → Governor → Broker → Auditor → Critic → Scaler) that coordinates real-time cost control decisions.
+1. **Multi-Agent Governance (MAG)**: A 6-agent orchestration system (Gatekeeper → Critic → Auditor → Scaler → Governor → Broker) that coordinates real-time cost control decisions.
 2. **Autonomous Token-Quota Balancing (ATQB)**: A hierarchical decision ladder that enforces token budgets, adapts to rate-limit signals, and optimizes model tier selection based on measured success probability and cost utility.
 
 ---
@@ -76,65 +76,70 @@ This implementation is based on two research algorithms:
 
 ### Multi-Agent Governance (MAG) — 6-Agent Orchestra
 
-The orchestrator sequences decisions through six specialized agents:
+The orchestrator sequences decisions through six specialized agents. Inference
+runs *upstream* of the orchestrator; `process_inference()` receives the
+already-completed `(tokens_in, tokens_out, latency_ms, output_text)` and drives
+the pipeline below in strict order (no parallel fan-out):
 
 ```
-Workload Request
+Workload Request  (tokens, model, latency, output_text, success?)
     ↓ [Step 1]
 ┌─────────────────────────────────────────────────────────┐
 │ GATEKEEPER AGENT: Intent Classification & TPW Assignment │
-│  • Routes request by intent (chat, batch, fine-tune)     │
-│  • Assigns Task Priority Weight (TPW) ∈ [0.45, 0.95]   │
-│  • 0.95 TPW for critical=true (SLA-protected)            │
+│  • classify_intent (chat, batch, fine-tune, …)           │
+│  • assign_tpw  ∈ [0.45, 0.95]; 0.95 if is_critical=True │
 └─────────────────────────────────────────────────────────┘
     ↓ [Step 2]
 ┌──────────────────────────────────────────────────────────┐
-│ GOVERNOR AGENT: ATQB Enforcement & Quota Transfers       │
-│  • Computes token utilization (TPW)                      │
-│  • Injects rate-limit pressure signals into decision     │
-│  • Triggers quota borrowing (quota_shift) from donors    │
-│  • Maintains transfer ledger & borrow/lend limits        │
+│ CRITIC AGENT: Quality Validation                         │
+│  • Validates output_text + latency vs SLO                │
+│  • Produces success flag (UCI denominator)               │
+│  • success_override path for cold-start models           │
 └──────────────────────────────────────────────────────────┘
     ↓ [Step 3]
 ┌──────────────────────────────────────────────────────────┐
-│ INFERENCE EXECUTION: Model Gateway (OpenAI/Ollama)       │
-│  • Execute inference on recommended model tier           │
-│  • Capture latency, tokens, success signal               │
+│ AUDITOR AGENT: UCI + Anomaly Trajectory                  │
+│  • ingest InferenceRecord                                │
+│  • compute_latest_uci  (c_tokens / n_successful_tasks)   │
+│  • anomaly_trajectory + emit_audit_event                 │
 └──────────────────────────────────────────────────────────┘
     ↓ [Step 4]
 ┌──────────────────────────────────────────────────────────┐
-│ CRITIC AGENT: Quality Validation                         │
-│  • Validate response quality and success                 │
-│  • Detect hallucinations, truncations, errors            │
-│  • Compute success_override for cold-start models        │
+│ SCALER AGENT: Forecast & Recommend (pre-Governor)        │
+│  • observe(tokens_total) per workload                    │
+│  • EWMA forecast (α=0.4)                                 │
+│  • pressure = forecast / (replicas × 50k tok/window)     │
+│  • scale_up at ≥0.85 or latency ≥1.25× SLO               │
+│  • scale_down at <0.30 (min 1 replica)                   │
+│  • cost_delta_usd = Δreplicas × forecast × UCI/token     │
+│  • Feeds projected pressure into Governor.reason chain   │
 └──────────────────────────────────────────────────────────┘
     ↓ [Step 5]
 ┌──────────────────────────────────────────────────────────┐
-│ AUDITOR AGENT: Usage Cost Calculation & Audit Logging    │
-│  • Compute Utility Cost Index (UCI) per inference        │
-│  • Update workload token/cost ledgers                    │
-│  • Record audit event with full metadata                 │
+│ GOVERNOR AGENT: ATQB Enforcement & Quota Transfers       │
+│  • Compute token / budget utilization vs HLB             │
+│  • Inject rate-limit pressure into decision ladder       │
+│  • Trigger quota_shift → rebalance from low-TPW donors   │
+│  • record_usage in ledger; record_model_outcome (MUA)    │
 └──────────────────────────────────────────────────────────┘
     ↓ [Step 6]
 ┌──────────────────────────────────────────────────────────┐
-│ BROKER AGENT: Provider Selection & Market Data           │
-│  • Query live spot pricing (Azure, AWS, NeoCloud)        │
-│  • Recommend lowest-UCI provider for next inference      │
-│  • Track market quotes with freshness and source         │
+│ BROKER AGENT: Spot Market Selection (post-UCI)           │
+│  • Uses freshly-computed UCI to pick lowest-cost provider│
+│  • Updates per-provider UCI quotes (Azure/AWS/NeoCloud)  │
 └──────────────────────────────────────────────────────────┘
-    ↓ [Step 7]
-┌──────────────────────────────────────────────────────────┐
-│ SCALER AGENT: GPU Capacity Recommendations               │
-│  • EWMA forecast of token demand per workload (α=0.4)    │
-│  • Pressure = forecast / capacity (replicas × 50k tok)   │
-│  • Recommends scale_up at ≥0.85 or latency ≥1.25× SLO    │
-│  • Recommends scale_down at <0.30 (min 1 replica)        │
-│  • Cost delta in USD using UCI per-token, fed back into  │
-│    Governor reasoning + Optimizer side-action            │
-└──────────────────────────────────────────────────────────┘
-    ↓ [Step 8-12]
-Policy Guardrails → Optimization Executor → Gatekeeper → Workload Response
+    ↓ [Step 7-12]
+Policy Guardrails → Optimization Executor → Scaler.apply
+                  → Gatekeeper.route → Workload Response
 ```
+
+> **Why this order?** The success flag from Critic is the UCI denominator,
+> so Critic must run before Auditor. The Scaler's forecast and projected
+> cost-delta feed back into the Governor's `decision.reason`, so Scaler
+> must run before Governor. The Broker uses the freshly-computed UCI to
+> pick the lowest-cost provider for the *next* request, so it runs after
+> Governor. `Scaler.apply` only commits the replica delta if the
+> guardrails allow the recommended action.
 
 ### Autonomous Token-Quota Balancing (ATQB) — Decision Ladder
 
@@ -472,107 +477,6 @@ python -m pytest --cov=src.agentic_finops tests/
 - **Scaler**: EWMA build-up, no_change / scale_up (pressure & latency) / scale_down branches, replica state commit on apply, cost-delta scaling with UCI per-token, negative-input clamping, legacy string API
 
 **Current Status**: 35+ tests passing (100% pass rate)
-
----
-
-## Architecture Diagram (Text)
-
-> Reflects the actual sequential execution order in
-> `MAGOrchestrator.process_inference` (see `src/agentic_finops/mag/orchestrator.py`).
-> Inference is executed *upstream* of the orchestrator; the orchestrator
-> receives completed `(tokens_in, tokens_out, latency_ms, output_text)` and
-> drives governance, scaling, guardrails, and optimization in a strict
-> pipeline (no parallel fan-out).
-
-```
-              ┌──────────────────────────────┐
-              │   Workload Request           │
-              │ (tokens, model, latency,     │
-              │  output_text, success?)      │
-              └──────────────┬───────────────┘
-                             │
-              ┌──────────────▼───────────────┐
-              │  GATEKEEPER                  │
-              │  classify_intent + assign_tpw│
-              └──────────────┬───────────────┘
-                             │
-              ┌──────────────▼───────────────┐
-              │  CRITIC                      │
-              │  Validate output quality     │
-              │  (success flag for UCI)      │
-              └──────────────┬───────────────┘
-                             │
-              ┌──────────────▼───────────────┐
-              │  AUDITOR                     │
-              │  Ingest InferenceRecord      │
-              │  → UCI + anomaly trajectory  │
-              │  → emit audit event          │
-              └──────────────┬───────────────┘
-                             │
-              ┌──────────────▼───────────────┐
-              │  SCALER (observe + recommend)│
-              │  EWMA forecast (α=0.4)       │
-              │  pressure = forecast/capacity│
-              │  cost_delta_usd via UCI/token│
-              └──────────────┬───────────────┘
-                             │ feeds reason chain
-                             ▼
-              ┌──────────────────────────────┐
-              │  GOVERNOR                    │
-              │  ATQB enforce (HLB, MUA)     │
-              │  quota transfers + ledger    │
-              │  record_usage / outcome      │
-              └──────────────┬───────────────┘
-                             │
-              ┌──────────────▼───────────────┐
-              │  BROKER                      │
-              │  Spot provider selection     │
-              │  (lowest UCI: azure/aws/...) │
-              └──────────────┬───────────────┘
-                             │
-              ┌──────────────▼───────────────┐
-              │  POLICY GUARDRAILS           │
-              │  HLB / approval / risk gate  │
-              │  may override action         │
-              └──────────────┬───────────────┘
-                             │
-              ┌──────────────▼───────────────┐
-              │  OPTIMIZATION EXECUTOR       │
-              │  enforced_action +           │
-              │  scaler_recommendation       │
-              │  (side-action provisioning)  │
-              └──────────────┬───────────────┘
-                             │
-              ┌──────────────▼───────────────┐
-              │  SCALER.apply                │
-              │  commit replica delta if     │
-              │  guardrail.allowed and       │
-              │  action != no_change         │
-              └──────────────┬───────────────┘
-                             │
-              ┌──────────────▼───────────────┐
-              │  GATEKEEPER.route            │
-              │  Compound response routing   │
-              └──────────────┬───────────────┘
-                             │
-                  ┌──────────▼──────────┐
-                  │  Response → Workload│
-                  │  (12-step trace +   │
-                  │   scaler block)     │
-                  └─────────────────────┘
-```
-
-**Notes**
-- `Critic` runs *before* `Auditor` because the success flag is the UCI
-  denominator (`n_successful_tasks`).
-- `Scaler.observe + recommend` runs *before* `Governor` so projected
-  pressure and cost-delta can be appended to `decision.reason`.
-- `Broker` runs *after* `Governor` and uses the freshly-computed UCI to
-  pick the lowest-cost provider for the *next* request.
-- `Auditor` is a single stage — quota ledger updates are owned by
-  `Governor.record_usage`, not the Auditor.
-- `Scaler.apply` only commits the replica state when guardrails allow the
-  action; otherwise the recommendation is reported but not enacted.
 
 ---
 
